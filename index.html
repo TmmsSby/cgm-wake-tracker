@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>起床時間トラッカー | CGM</title>
+  <title>お祈り開始時間トラッカー | CGM</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
   <style>
@@ -259,7 +259,7 @@
   <div class="app-header">
     <div class="icon">🌅</div>
     <div>
-      <h1>起床時間トラッカー</h1>
+      <h1>お祈り開始時間トラッカー</h1>
       <p>CGMチーム</p>
     </div>
   </div>
@@ -317,10 +317,10 @@
     <!-- 入力タブ -->
     <div id="tab-input" class="tab-content active">
       <div class="card">
-        <h2>起床時間を記録</h2>
+        <h2>お祈り開始時間を記録</h2>
         <label for="input-date">日付</label>
         <input type="date" id="input-date" />
-        <label for="input-time">起床時間</label>
+        <label for="input-time">お祈り開始時間</label>
         <input type="time" id="input-time" />
         <button class="btn-primary" onclick="doSave()">保存する</button>
         <div class="msg msg-error" id="input-error"></div>
@@ -489,7 +489,7 @@ async function doSave() {
   if (!date || !time) { showMsg('input-error', '日付と時間を入力してください', 'error'); return; }
 
   try {
-    const result = await gasCall('saveRecord', { email: currentUser.email, date, wakeTime: time });
+    const result = await gasCall('saveRecord', { email: currentUser.email, date, prayTime: time });
     if (!result.success) { showMsg('input-error', result.error, 'error'); return; }
     showMsg('input-success', result.updated ? '更新しました！' : '記録しました！', 'success');
     historyLoaded = false;
@@ -510,9 +510,9 @@ async function loadHistory() {
     loading.style.display = 'none';
     if (!result.success) { content.innerHTML = `<p style="color:var(--danger);font-size:13px;">${result.error}</p>`; return; }
     if (!result.records.length) { content.innerHTML = '<div class="empty-state">まだ記録がありません</div>'; return; }
-    let html = '<table><thead><tr><th>日付</th><th>起床時間</th></tr></thead><tbody>';
+    let html = '<table><thead><tr><th>日付</th><th>お祈り開始時間</th></tr></thead><tbody>';
     result.records.forEach(r => {
-      html += `<tr><td>${r.date}</td><td><span class="time-chip">${r.wakeTime}</span></td></tr>`;
+      html += `<tr><td>${r.date}</td><td><span class="time-chip">${r.prayTime}</span></td></tr>`;
     });
     html += '</tbody></table>';
     content.innerHTML = html;
@@ -534,14 +534,26 @@ async function loadAdmin() {
     if (!result.success) { content.innerHTML = `<p style="color:var(--danger);font-size:13px;">${result.error}</p>`; return; }
     if (!result.rows.length) { content.innerHTML = '<div class="empty-state">データがありません</div>'; return; }
 
-    const recentDates = result.dates.slice(-14);
+    const dates = (result.dates || []).map(d => String(d));
+    const recentDates = dates.slice(-14);
+
+    if (recentDates.length === 0) {
+      content.innerHTML = '<div class="empty-state">まだ記録がありません</div>';
+      return;
+    }
+
     let html = '<table class="admin-table"><thead><tr><th>名前</th><th>教会</th>';
-    recentDates.forEach(d => { html += `<th>${d.slice(5)}</th>`; });
+    recentDates.forEach(d => {
+      const parts = d.split('-');
+      const label = parts.length === 3 ? parts[1] + '/' + parts[2] : d;
+      html += `<th style="white-space:nowrap;">${label}</th>`;
+    });
     html += '</tr></thead><tbody>';
     result.rows.forEach(row => {
       html += `<tr><td style="white-space:nowrap;">${row.name}</td><td style="white-space:nowrap;color:var(--text-muted);">${row.church}</td>`;
       recentDates.forEach(d => {
-        const t = row.records[d] || '';
+        const records = row.records || {};
+        const t = records[d] || '';
         html += `<td>${t ? `<span class="time-chip">${t}</span>` : '<span class="dash">-</span>'}</td>`;
       });
       html += '</tr>';
