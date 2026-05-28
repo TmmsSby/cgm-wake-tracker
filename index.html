@@ -512,7 +512,11 @@ async function loadHistory() {
     if (!result.records.length) { content.innerHTML = '<div class="empty-state">まだ記録がありません</div>'; return; }
     let html = '<table><thead><tr><th>日付</th><th>お祈り開始時間</th></tr></thead><tbody>';
     result.records.forEach(r => {
-      html += `<tr><td>${r.date}</td><td><span class="time-chip">${r.prayTime}</span></td></tr>`;
+      const d = String(r.date || '');
+      const parts = d.split('-');
+      const dateStr = parts.length === 3 ? parts[0] + '/' + parts[1] + '/' + parts[2] : d;
+      const timeVal = r.prayTime || '';
+      html += `<tr><td>${dateStr}</td><td><span class="time-chip">${timeVal}</span></td></tr>`;
     });
     html += '</tbody></table>';
     content.innerHTML = html;
@@ -545,7 +549,7 @@ async function loadAdmin() {
     let html = '<table class="admin-table"><thead><tr><th>名前</th><th>教会</th>';
     recentDates.forEach(d => {
       const parts = d.split('-');
-      const label = parts.length === 3 ? parts[1] + '/' + parts[2] : d;
+      const label = parts.length === 3 ? parts[0] + '/' + parts[1] + '/' + parts[2] : d;
       html += `<th style="white-space:nowrap;">${label}</th>`;
     });
     html += '</tr></thead><tbody>';
