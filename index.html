@@ -272,6 +272,7 @@
       <input type="email" id="login-email" placeholder="your@gmail.com" />
       <button class="btn-primary" id="login-btn" onclick="doLogin()">ログイン</button>
       <div class="msg msg-error" id="login-error"></div>
+      <p id="login-hint" style="font-size:12px; color:var(--text-muted); margin-top:8px;"></p>
       <p style="font-size:12px; color:var(--text-hint); margin-top:12px;">
         ※ 実際の運用ではGoogle OAuthに置き換えます
       </p>
@@ -363,6 +364,15 @@ let currentUser = null;
 let historyLoaded = false;
 let adminLoaded = false;
 
+// ページ読み込み時にメアドを復元
+window.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem('cgm_email');
+  if (saved) {
+    document.getElementById('login-email').value = saved;
+    document.getElementById('login-hint').textContent = '前回のメールアドレスを復元しました';
+  }
+});
+
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
@@ -420,6 +430,7 @@ async function doLogin() {
     const result = await gasCall('getMember', { email });
     if (!result.success) { showMsg('login-error', result.error || 'エラーが発生しました', 'error'); return; }
     currentUser = { email };
+    localStorage.setItem('cgm_email', email);
     if (result.member) {
       currentUser.name = result.member.name;
       currentUser.church = result.member.church;
@@ -572,8 +583,8 @@ async function loadAdmin() {
 
 function doLogout() {
   currentUser = null;
-  document.getElementById('login-email').value = '';
-  hideMsg('login-error');
+  // メアドは残してワンタップログインを維持
+  document.getElementById('login-error') && hideMsg('login-error');
   showScreen('screen-login');
 }
 </script>
