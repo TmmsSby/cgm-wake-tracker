@@ -527,7 +527,14 @@ async function loadHistory() {
       const parts = d.split('-');
       const dateStr = parts.length === 3 ? parts[0] + '/' + parts[1] + '/' + parts[2] : d;
       const timeVal = r.prayTime || '';
-      html += `<tr><td>${dateStr}</td><td><span class="time-chip">${timeVal}</span></td></tr>`;
+      // 3:00以前なら王冠マーク
+      const isCrown = (() => {
+        if (!timeVal) return false;
+        const [h, m] = timeVal.split(':').map(Number);
+        return h < 3 || (h === 3 && m === 0);
+      })();
+      const crown = isCrown ? ' <span title="3:00以前起床！" style="font-size:16px;">👑</span>' : '';
+      html += `<tr><td>${dateStr}</td><td><span class="time-chip">${timeVal}</span>${crown}</td></tr>`;
     });
     html += '</tbody></table>';
     content.innerHTML = html;
@@ -569,7 +576,13 @@ async function loadAdmin() {
       recentDates.forEach(d => {
         const records = row.records || {};
         const t = records[d] || '';
-        html += `<td>${t ? `<span class="time-chip">${t}</span>` : '<span class="dash">-</span>'}</td>`;
+        const isCrown = (() => {
+          if (!t) return false;
+          const [h, m] = t.split(':').map(Number);
+          return h < 3 || (h === 3 && m === 0);
+        })();
+        const crown = isCrown ? '👑' : '';
+        html += `<td>${t ? `<span class="time-chip">${t}</span>${crown}` : '<span class="dash">-</span>'}</td>`;
       });
       html += '</tr>';
     });
