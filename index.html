@@ -522,19 +522,52 @@ async function loadHistory() {
     if (!result.success) { content.innerHTML = `<p style="color:var(--danger);font-size:13px;">${result.error}</p>`; return; }
     if (!result.records.length) { content.innerHTML = '<div class="empty-state">まだ記録がありません</div>'; return; }
     let html = '<table><thead><tr><th>日付</th><th>お祈り開始時間</th></tr></thead><tbody>';
+    // 3:00以前かどうか判定
+    const isCrownTime = (t) => {
+      if (!t) return false;
+      const [h, m] = t.split(':').map(Number);
+      return h < 3 || (h === 3 && m === 0);
+    };
+
+    // 日付順にソート済みのrecordsで連続達成日数を計算
+    const sorted = [...result.records].sort((a, b) => a.date.localeCompare(b.date));
+    const streakMap = {}; // date → 連続日数
+    let streak = 0;
+    sorted.forEach((r, i) => {
+      if (!isCrownTime(r.prayTime)) {
+        streak = 0;
+      } else {
+        if (i === 0) {
+          streak = 1;
+        } else {
+          const prev = sorted[i - 1];
+          const prevDate = new Date(prev.date);
+          const curDate = new Date(r.date);
+          const diff = (curDate - prevDate) / (1000 * 60 * 60 * 24);
+          streak = (diff === 1 && isCrownTime(prev.prayTime)) ? streak + 1 : 1;
+        }
+      }
+      streakMap[r.date] = streak;
+    });
+
     result.records.forEach(r => {
       const d = String(r.date || '');
       const parts = d.split('-');
       const dateStr = parts.length === 3 ? parts[0] + '/' + parts[1] + '/' + parts[2] : d;
       const timeVal = r.prayTime || '';
-      // 3:00以前なら王冠マーク
-      const isCrown = (() => {
-        if (!timeVal) return false;
-        const [h, m] = timeVal.split(':').map(Number);
-        return h < 3 || (h === 3 && m === 0);
+      const crown = (() => {
+        if (!isCrownTime(timeVal)) return '';
+        const s = streakMap[r.date] || 1;
+        if (s >= 7) return ' <span title="7日連続達成！🎉" style="font-size:22px;">👑</span>';
+        return ' <span title="3:00以前！" style="font-size:16px;">👑</span>';
       })();
-      const crown = isCrown ? ' <span title="3:00以前起床！" style="font-size:16px;">👑</span>' : '';
-      html += `<tr><td>${dateStr}</td><td><span class="time-chip">${timeVal}</span>${crown}</td></tr>`;
+      const streakBadge = (() => {
+        const s = streakMap[r.date] || 0;
+        if (s >= 7) return ` <span style="font-size:11px; color:var(--warning); font-weight:700;">${s}日連続！</span>`;
+        if (s >= 2) return ` <span style="font-size:11px; color:var(--text-muted);">${s}日連続</span>`;
+        return '';
+      })();
+      html += `<tr><td>${dateStr}</td><td><span class="time-chip">${timeVal}</span>${crown}${streakBadge}</td></tr>`;
     });
     html += '</tbody></table>';
     content.innerHTML = html;
