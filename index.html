@@ -4,264 +4,92 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>お祈り開始時間トラッカー | CGM</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     :root {
-      --bg: #f5f4f0;
-      --surface: #ffffff;
-      --border: rgba(0,0,0,0.1);
-      --border-strong: rgba(0,0,0,0.2);
-      --text: #1a1a1a;
-      --text-muted: #666;
-      --text-hint: #999;
-      --accent: #2563eb;
-      --accent-light: #eff6ff;
-      --success: #16a34a;
-      --success-light: #f0fdf4;
-      --danger: #dc2626;
-      --danger-light: #fef2f2;
-      --warning-light: #fffbeb;
-      --warning: #b45309;
-      --radius: 10px;
-      --radius-sm: 6px;
+      --bg: #f5f4f0; --surface: #ffffff; --border: rgba(0,0,0,0.1);
+      --border-strong: rgba(0,0,0,0.2); --text: #1a1a1a; --text-muted: #666;
+      --text-hint: #999; --accent: #2563eb; --accent-light: #eff6ff;
+      --success: #16a34a; --success-light: #f0fdf4; --danger: #dc2626;
+      --danger-light: #fef2f2; --warning-light: #fffbeb; --warning: #b45309;
+      --radius: 10px; --radius-sm: 6px;
     }
-
-    body {
-      font-family: 'Noto Sans JP', sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      padding: 1.5rem 1rem;
-    }
-
-    .container { max-width: 560px; margin: 0 auto; }
-
-    .app-header {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 1.5rem;
-    }
-    .app-header .icon {
-      width: 40px; height: 40px;
-      background: var(--accent);
-      border-radius: var(--radius-sm);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 20px;
-    }
+    body { font-family: 'Noto Sans JP', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; padding: 1.5rem 1rem; }
+    .container { max-width: 600px; margin: 0 auto; }
+    .app-header { display: flex; align-items: center; gap: 10px; margin-bottom: 1.5rem; }
+    .app-header .icon { width: 40px; height: 40px; background: var(--accent); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-size: 20px; }
     .app-header h1 { font-size: 18px; font-weight: 700; }
     .app-header p { font-size: 12px; color: var(--text-muted); }
-
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 1.25rem;
-      margin-bottom: 1rem;
-    }
-
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem; }
     .card h2 { font-size: 15px; font-weight: 700; margin-bottom: 1rem; }
-
     label { display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 4px; }
-
-    input[type="email"],
-    input[type="text"],
-    input[type="date"],
-    input[type="time"] {
-      width: 100%;
-      padding: 10px 12px;
-      border: 1px solid var(--border-strong);
-      border-radius: var(--radius-sm);
-      font-size: 15px;
-      font-family: inherit;
-      background: var(--surface);
-      color: var(--text);
-      margin-bottom: 12px;
-      transition: border-color 0.15s;
-      -webkit-appearance: none;
+    input[type="email"], input[type="text"], input[type="date"], input[type="time"] {
+      width: 100%; padding: 10px 12px; border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm); font-size: 15px; font-family: inherit;
+      background: var(--surface); color: var(--text); margin-bottom: 12px;
+      transition: border-color 0.15s; -webkit-appearance: none;
     }
     input:focus { outline: none; border-color: var(--accent); }
-
-    button {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      padding: 10px 16px;
-      border: none;
-      border-radius: var(--radius-sm);
-      font-size: 14px;
-      font-family: inherit;
-      font-weight: 500;
-      cursor: pointer;
-      transition: opacity 0.15s, transform 0.1s;
-    }
+    button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 16px; border: none; border-radius: var(--radius-sm); font-size: 14px; font-family: inherit; font-weight: 500; cursor: pointer; transition: opacity 0.15s, transform 0.1s; }
     button:active { transform: scale(0.98); }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
-
     .btn-primary { background: var(--accent); color: #fff; width: 100%; }
     .btn-primary:hover:not(:disabled) { opacity: 0.9; }
-    .btn-ghost {
-      background: transparent;
-      color: var(--text-muted);
-      border: 1px solid var(--border-strong);
-      font-size: 13px;
-      padding: 6px 12px;
-    }
+    .btn-ghost { background: transparent; color: var(--text-muted); border: 1px solid var(--border-strong); font-size: 13px; padding: 6px 12px; }
     .btn-ghost:hover { background: var(--bg); }
-
-    .msg {
-      font-size: 13px;
-      padding: 8px 12px;
-      border-radius: var(--radius-sm);
-      margin-top: 8px;
-      display: none;
-    }
+    .btn-month { background: var(--bg); color: var(--text-muted); border: 1px solid var(--border); font-size: 12px; padding: 5px 10px; border-radius: 20px; cursor: pointer; }
+    .btn-month.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .msg { font-size: 13px; padding: 8px 12px; border-radius: var(--radius-sm); margin-top: 8px; display: none; }
     .msg.show { display: block; }
     .msg-error { background: var(--danger-light); color: var(--danger); }
     .msg-success { background: var(--success-light); color: var(--success); }
-
-    .user-bar {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 1rem;
-      flex-wrap: wrap;
-    }
-    .user-avatar {
-      width: 36px; height: 36px;
-      background: var(--accent-light);
-      color: var(--accent);
-      border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 14px; font-weight: 700;
-    }
+    .user-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .user-avatar { width: 36px; height: 36px; background: var(--accent-light); color: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; }
     .user-info { flex: 1; }
     .user-name { font-size: 14px; font-weight: 500; }
     .user-church { font-size: 12px; color: var(--text-muted); }
-
-    .badge {
-      font-size: 11px;
-      padding: 2px 8px;
-      border-radius: 20px;
-      font-weight: 500;
-    }
+    .badge { font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 500; }
     .badge-admin { background: var(--warning-light); color: var(--warning); }
-
-    .tabs {
-      display: flex;
-      gap: 4px;
-      background: var(--bg);
-      border-radius: var(--radius-sm);
-      padding: 3px;
-      margin-bottom: 1rem;
-    }
-    .tab {
-      flex: 1;
-      padding: 8px 4px;
-      border-radius: calc(var(--radius-sm) - 2px);
-      font-size: 13px;
-      font-weight: 500;
-      background: transparent;
-      color: var(--text-muted);
-      border: none;
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-    .tab.active {
-      background: var(--surface);
-      color: var(--text);
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
-
+    .tabs { display: flex; gap: 4px; background: var(--bg); border-radius: var(--radius-sm); padding: 3px; margin-bottom: 1rem; }
+    .tab { flex: 1; padding: 8px 4px; border-radius: calc(var(--radius-sm) - 2px); font-size: 13px; font-weight: 500; background: transparent; color: var(--text-muted); border: none; cursor: pointer; transition: all 0.15s; }
+    .tab.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
     .screen { display: none; }
     .screen.active { display: block; }
     .tab-content { display: none; }
     .tab-content.active { display: block; }
-
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th {
-      text-align: left;
-      padding: 8px 10px;
-      color: var(--text-muted);
-      border-bottom: 1px solid var(--border);
-      font-weight: 500;
-      white-space: nowrap;
-    }
-    td {
-      padding: 8px 10px;
-      border-bottom: 1px solid var(--border);
-      vertical-align: middle;
-    }
+    th { text-align: left; padding: 8px 10px; color: var(--text-muted); border-bottom: 1px solid var(--border); font-weight: 500; white-space: nowrap; }
+    td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
     tr:last-child td { border-bottom: none; }
-
-    .time-chip {
-      display: inline-block;
-      background: var(--accent-light);
-      color: var(--accent);
-      font-size: 13px;
-      font-weight: 500;
-      padding: 2px 8px;
-      border-radius: 20px;
-    }
+    .time-chip { display: inline-block; background: var(--accent-light); color: var(--accent); font-size: 13px; font-weight: 500; padding: 2px 8px; border-radius: 20px; }
     .dash { color: var(--text-hint); }
-
-    .spinner {
-      width: 16px; height: 16px;
-      border: 2px solid var(--border-strong);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-      display: inline-block;
-    }
+    .spinner { width: 16px; height: 16px; border: 2px solid var(--border-strong); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; }
     @keyframes spin { to { transform: rotate(360deg); } }
-
-    .loading-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      color: var(--text-muted);
-      font-size: 14px;
-      padding: 1rem 0;
-    }
-
-    .empty-state {
-      text-align: center;
-      color: var(--text-hint);
-      padding: 2rem 0;
-      font-size: 14px;
-    }
-
+    .loading-row { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 14px; padding: 1rem 0; }
+    .empty-state { text-align: center; color: var(--text-hint); padding: 2rem 0; font-size: 14px; }
     .overflow-wrap { overflow-x: auto; }
-
-    .admin-table th, .admin-table td {
-      text-align: center;
-      padding: 6px 8px;
-    }
-    .admin-table th:first-child,
-    .admin-table td:first-child,
-    .admin-table th:nth-child(2),
-    .admin-table td:nth-child(2) {
-      text-align: left;
-    }
-
-    @media (max-width: 400px) {
-      .tab { font-size: 12px; padding: 7px 2px; }
-    }
+    .admin-table th, .admin-table td { text-align: center; padding: 6px 8px; }
+    .admin-table th:first-child, .admin-table td:first-child,
+    .admin-table th:nth-child(2), .admin-table td:nth-child(2) { text-align: left; }
+    .month-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 1rem; }
+    .avg-box { background: var(--accent-light); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 1rem; font-size: 13px; }
+    .avg-box .avg-title { color: var(--text-muted); margin-bottom: 6px; font-weight: 500; }
+    .avg-box .avg-row { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+    .avg-box .avg-item { display: flex; flex-direction: column; }
+    .avg-box .avg-label { font-size: 11px; color: var(--text-muted); }
+    .avg-box .avg-val { font-size: 16px; font-weight: 700; color: var(--accent); }
+    .crown-sm { font-size: 15px; vertical-align: middle; }
+    .crown-lg { font-size: 24px; vertical-align: middle; }
+    .streak-badge { font-size: 11px; font-weight: 700; color: var(--warning); margin-left: 2px; }
+    .streak-sm { font-size: 11px; color: var(--text-muted); margin-left: 2px; }
   </style>
 </head>
 <body>
 <div class="container">
-
   <div class="app-header">
     <div class="icon">🌅</div>
-    <div>
-      <h1>お祈り開始時間トラッカー</h1>
-      <p>CGMチーム</p>
-    </div>
+    <div><h1>お祈り開始時間トラッカー</h1><p>CGMチーム</p></div>
   </div>
 
   <!-- ログイン画面 -->
@@ -273,9 +101,7 @@
       <button class="btn-primary" id="login-btn" onclick="doLogin()">ログイン</button>
       <div class="msg msg-error" id="login-error"></div>
       <p id="login-hint" style="font-size:12px; color:var(--text-muted); margin-top:8px;"></p>
-      <p style="font-size:12px; color:var(--text-hint); margin-top:12px;">
-        ※ 実際の運用ではGoogle OAuthに置き換えます
-      </p>
+      <p style="font-size:12px; color:var(--text-hint); margin-top:12px;">※ 実際の運用ではGoogle OAuthに置き換えます</p>
     </div>
   </div>
 
@@ -296,8 +122,7 @@
 
   <!-- メイン画面 -->
   <div id="screen-main" class="screen">
-
-    <div class="card" style="padding: 0.75rem 1rem;">
+    <div class="card" style="padding:0.75rem 1rem; margin-bottom:0.75rem;">
       <div class="user-bar">
         <div class="user-avatar" id="user-avatar">-</div>
         <div class="user-info">
@@ -309,7 +134,7 @@
       </div>
     </div>
 
-    <div class="tabs" id="main-tabs">
+    <div class="tabs">
       <button class="tab active" onclick="showTab('input')">📝 入力</button>
       <button class="tab" onclick="showTab('history')">📅 履歴</button>
       <button class="tab" id="admin-tab-btn" style="display:none;" onclick="showTab('admin')">👥 全員</button>
@@ -333,36 +158,33 @@
     <div id="tab-history" class="tab-content">
       <div class="card">
         <h2>自分の履歴</h2>
-        <div class="loading-row" id="history-loading" style="display:none;">
-          <span class="spinner"></span>読み込み中...
-        </div>
+        <div class="month-btns" id="history-month-btns"></div>
+        <div id="history-avg" class="avg-box" style="display:none;"></div>
+        <div class="loading-row" id="history-loading" style="display:none;"><span class="spinner"></span>読み込み中...</div>
         <div id="history-content"></div>
       </div>
     </div>
 
-    <!-- 管理者タブ -->
+    <!-- 全員タブ -->
     <div id="tab-admin" class="tab-content">
       <div class="card">
-        <h2>全員の起床記録</h2>
-        <p style="font-size:12px; color:var(--text-muted); margin-bottom:0.75rem;">直近14日間を表示</p>
-        <div class="loading-row" id="admin-loading" style="display:none;">
-          <span class="spinner"></span>読み込み中...
-        </div>
-        <div class="overflow-wrap">
-          <div id="admin-content"></div>
-        </div>
+        <h2>全員のお祈り記録</h2>
+        <div class="month-btns" id="admin-month-btns"></div>
+        <div class="loading-row" id="admin-loading" style="display:none;"><span class="spinner"></span>読み込み中...</div>
+        <div class="overflow-wrap"><div id="admin-content"></div></div>
       </div>
     </div>
-
-  </div><!-- /screen-main -->
-</div><!-- /container -->
+  </div>
+</div>
 
 <script>
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbzNYecvvNX21ZCtePWC2MnSAZQ5jCkpbXdQ5ddmo9-bn9v-aTRyg7LhuFiQDfTdU0G8/exec';
 const ADMIN_EMAIL = 'korosuke19750223@gmail.com';
 let currentUser = null;
-let historyLoaded = false;
-let adminLoaded = false;
+let allRecords = []; // 全件キャッシュ
+let allAdminData = null; // 管理者データキャッシュ
+let currentHistoryMonth = null;
+let currentAdminMonth = null;
 
 // ページ読み込み時にメアドを復元
 window.addEventListener('DOMContentLoaded', () => {
@@ -382,11 +204,12 @@ function showMsg(id, text, type) {
   const el = document.getElementById(id);
   el.textContent = text;
   el.className = 'msg show msg-' + type;
-  if (type === 'success') setTimeout(() => { el.classList.remove('show'); }, 3000);
+  if (type === 'success') setTimeout(() => el.classList.remove('show'), 3000);
 }
 
 function hideMsg(id) {
-  document.getElementById(id).classList.remove('show');
+  const el = document.getElementById(id);
+  if (el) el.classList.remove('show');
 }
 
 function gasCall(action, data) {
@@ -394,38 +217,26 @@ function gasCall(action, data) {
     const cbName = 'cb_' + Date.now() + '_' + Math.random().toString(36).slice(2);
     const params = new URLSearchParams({ action, callback: cbName, ...data });
     const script = document.createElement('script');
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error('タイムアウトしました'));
-    }, 15000);
-    function cleanup() {
-      clearTimeout(timer);
-      delete window[cbName];
-      if (script.parentNode) script.parentNode.removeChild(script);
-    }
-    window[cbName] = (result) => {
-      cleanup();
-      resolve(result);
-    };
+    const timer = setTimeout(() => { cleanup(); reject(new Error('タイムアウトしました')); }, 15000);
+    function cleanup() { clearTimeout(timer); delete window[cbName]; if (script.parentNode) script.parentNode.removeChild(script); }
+    window[cbName] = (result) => { cleanup(); resolve(result); };
     script.src = GAS_URL + '?' + params.toString();
-    script.onerror = () => {
-      cleanup();
-      reject(new Error('接続に失敗しました'));
-    };
+    script.onerror = () => { cleanup(); reject(new Error('接続に失敗しました')); };
     document.head.appendChild(script);
   });
 }
+
+// ============================================================
+// 認証
+// ============================================================
 
 async function doLogin() {
   const email = document.getElementById('login-email').value.trim();
   hideMsg('login-error');
   if (!email) { showMsg('login-error', 'メールアドレスを入力してください', 'error'); return; }
   if (!email.includes('@')) { showMsg('login-error', '正しいメールアドレスを入力してください', 'error'); return; }
-
   const btn = document.getElementById('login-btn');
-  btn.innerHTML = '<span class="spinner"></span> 確認中...';
-  btn.disabled = true;
-
+  btn.innerHTML = '<span class="spinner"></span> 確認中...'; btn.disabled = true;
   try {
     const result = await gasCall('getMember', { email });
     if (!result.success) { showMsg('login-error', result.error || 'エラーが発生しました', 'error'); return; }
@@ -439,10 +250,9 @@ async function doLogin() {
       showScreen('screen-register');
     }
   } catch(e) {
-    showMsg('login-error', 'サーバーへの接続に失敗しました', 'error');
+    showMsg('login-error', '接続に失敗しました', 'error');
   } finally {
-    btn.innerHTML = 'ログイン';
-    btn.disabled = false;
+    btn.innerHTML = 'ログイン'; btn.disabled = false;
   }
 }
 
@@ -451,17 +261,13 @@ async function doRegister() {
   const church = document.getElementById('reg-church').value.trim();
   hideMsg('reg-error'); hideMsg('reg-success');
   if (!name || !church) { showMsg('reg-error', '全項目を入力してください', 'error'); return; }
-
   try {
     const result = await gasCall('registerMember', { email: currentUser.email, name, church });
     if (!result.success) { showMsg('reg-error', result.error, 'error'); return; }
-    currentUser.name = name;
-    currentUser.church = church;
+    currentUser.name = name; currentUser.church = church;
     showMsg('reg-success', '登録しました！', 'success');
     setTimeout(() => enterMain(), 800);
-  } catch(e) {
-    showMsg('reg-error', 'エラーが発生しました', 'error');
-  }
+  } catch(e) { showMsg('reg-error', 'エラーが発生しました', 'error'); }
 }
 
 function enterMain() {
@@ -472,13 +278,16 @@ function enterMain() {
   const isAdmin = currentUser.email === ADMIN_EMAIL;
   document.getElementById('admin-badge').style.display = isAdmin ? '' : 'none';
   document.getElementById('admin-tab-btn').style.display = isAdmin ? '' : 'none';
-
   const today = new Date().toLocaleDateString('sv-SE');
   document.getElementById('input-date').value = today;
-
-  historyLoaded = false;
-  adminLoaded = false;
+  allRecords = []; allAdminData = null;
   showTab('input');
+}
+
+function doLogout() {
+  currentUser = null;
+  hideMsg('login-error');
+  showScreen('screen-login');
 }
 
 function showTab(tab) {
@@ -486,152 +295,290 @@ function showTab(tab) {
     document.getElementById('tab-' + t).classList.toggle('active', t === tab);
   });
   document.querySelectorAll('.tab').forEach(btn => {
-    const match = btn.getAttribute('onclick') === `showTab('${tab}')`;
-    btn.classList.toggle('active', match);
+    btn.classList.toggle('active', btn.getAttribute('onclick') === `showTab('${tab}')`);
   });
-  if (tab === 'history' && !historyLoaded) loadHistory();
-  if (tab === 'admin' && !adminLoaded) loadAdmin();
+  if (tab === 'history') loadHistory();
+  if (tab === 'admin') loadAdmin();
 }
+
+// ============================================================
+// 入力
+// ============================================================
 
 async function doSave() {
   const date = document.getElementById('input-date').value;
   const time = document.getElementById('input-time').value;
   hideMsg('input-error'); hideMsg('input-success');
   if (!date || !time) { showMsg('input-error', '日付と時間を入力してください', 'error'); return; }
-
   try {
     const result = await gasCall('saveRecord', { email: currentUser.email, date, prayTime: time });
     if (!result.success) { showMsg('input-error', result.error, 'error'); return; }
     showMsg('input-success', result.updated ? '更新しました！' : '記録しました！', 'success');
-    historyLoaded = false;
-    adminLoaded = false;
-  } catch(e) {
-    showMsg('input-error', 'エラーが発生しました', 'error');
-  }
+    allRecords = []; allAdminData = null; // キャッシュクリア
+  } catch(e) { showMsg('input-error', 'エラーが発生しました', 'error'); }
 }
+
+// ============================================================
+// ユーティリティ
+// ============================================================
+
+function isCrownTime(t) {
+  if (!t) return false;
+  const [h, m] = t.split(':').map(Number);
+  return h < 3 || (h === 3 && m === 0);
+}
+
+function timeToMinutes(t) {
+  if (!t) return null;
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+
+function minutesToTime(mins) {
+  const h = Math.floor(mins / 60) % 24;
+  const m = Math.round(mins % 60);
+  return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+}
+
+function getYearMonth(dateStr) {
+  return dateStr ? dateStr.slice(0, 7) : '';
+}
+
+function formatDate(d) {
+  const parts = d.split('-');
+  return parts.length === 3 ? parts[0] + '/' + parts[1] + '/' + parts[2] : d;
+}
+
+// 連続達成日数マップを作成
+function buildStreakMap(records) {
+  const sorted = [...records].sort((a, b) => a.date.localeCompare(b.date));
+  const streakMap = {};
+  let streak = 0;
+  sorted.forEach((r, i) => {
+    if (!isCrownTime(r.prayTime)) {
+      streak = 0;
+    } else {
+      if (i === 0) {
+        streak = 1;
+      } else {
+        const prev = sorted[i - 1];
+        const prevDate = new Date(prev.date);
+        const curDate = new Date(r.date);
+        const diff = (curDate - prevDate) / (1000 * 60 * 60 * 24);
+        streak = (diff === 1 && isCrownTime(prev.prayTime)) ? streak + 1 : 1;
+      }
+    }
+    streakMap[r.date] = streak;
+  });
+  return streakMap;
+}
+
+// 月リストを生成（新しい順）
+function buildMonthList(records) {
+  const months = [...new Set(records.map(r => getYearMonth(r.date)))].filter(Boolean);
+  months.sort((a, b) => b.localeCompare(a));
+  return months;
+}
+
+// 月表示ラベル
+function monthLabel(ym) {
+  const [y, m] = ym.split('-');
+  return y + '年' + parseInt(m) + '月';
+}
+
+// ============================================================
+// 履歴タブ
+// ============================================================
 
 async function loadHistory() {
-  historyLoaded = true;
-  const loading = document.getElementById('history-loading');
-  const content = document.getElementById('history-content');
-  loading.style.display = 'flex';
-  content.innerHTML = '';
-  try {
-    const result = await gasCall('getMyRecords', { email: currentUser.email });
-    loading.style.display = 'none';
-    if (!result.success) { content.innerHTML = `<p style="color:var(--danger);font-size:13px;">${result.error}</p>`; return; }
-    if (!result.records.length) { content.innerHTML = '<div class="empty-state">まだ記録がありません</div>'; return; }
-    let html = '<table><thead><tr><th>日付</th><th>お祈り開始時間</th></tr></thead><tbody>';
-    // 3:00以前かどうか判定
-    const isCrownTime = (t) => {
-      if (!t) return false;
-      const [h, m] = t.split(':').map(Number);
-      return h < 3 || (h === 3 && m === 0);
-    };
-
-    // 日付順にソート済みのrecordsで連続達成日数を計算
-    const sorted = [...result.records].sort((a, b) => a.date.localeCompare(b.date));
-    const streakMap = {}; // date → 連続日数
-    let streak = 0;
-    sorted.forEach((r, i) => {
-      if (!isCrownTime(r.prayTime)) {
-        streak = 0;
-      } else {
-        if (i === 0) {
-          streak = 1;
-        } else {
-          const prev = sorted[i - 1];
-          const prevDate = new Date(prev.date);
-          const curDate = new Date(r.date);
-          const diff = (curDate - prevDate) / (1000 * 60 * 60 * 24);
-          streak = (diff === 1 && isCrownTime(prev.prayTime)) ? streak + 1 : 1;
-        }
-      }
-      streakMap[r.date] = streak;
-    });
-
-    result.records.forEach(r => {
-      const d = String(r.date || '');
-      const parts = d.split('-');
-      const dateStr = parts.length === 3 ? parts[0] + '/' + parts[1] + '/' + parts[2] : d;
-      const timeVal = r.prayTime || '';
-      const crown = (() => {
-        if (!isCrownTime(timeVal)) return '';
-        const s = streakMap[r.date] || 1;
-        if (s >= 7) return ' <span title="7日連続達成！🎉" style="font-size:22px;">👑</span>';
-        return ' <span title="3:00以前！" style="font-size:16px;">👑</span>';
-      })();
-      const streakBadge = (() => {
-        const s = streakMap[r.date] || 0;
-        if (s >= 7) return ` <span style="font-size:11px; color:var(--warning); font-weight:700;">${s}日連続！</span>`;
-        if (s >= 2) return ` <span style="font-size:11px; color:var(--text-muted);">${s}日連続</span>`;
-        return '';
-      })();
-      html += `<tr><td>${dateStr}</td><td><span class="time-chip">${timeVal}</span>${crown}${streakBadge}</td></tr>`;
-    });
-    html += '</tbody></table>';
-    content.innerHTML = html;
-  } catch(e) {
-    loading.style.display = 'none';
-    content.innerHTML = '<p style="color:var(--danger);font-size:13px;">読み込みに失敗しました</p>';
-  }
-}
-
-async function loadAdmin() {
-  adminLoaded = true;
-  const loading = document.getElementById('admin-loading');
-  const content = document.getElementById('admin-content');
-  loading.style.display = 'flex';
-  content.innerHTML = '';
-  try {
-    const result = await gasCall('getAllRecords', { email: currentUser.email });
-    loading.style.display = 'none';
-    if (!result.success) { content.innerHTML = `<p style="color:var(--danger);font-size:13px;">${result.error}</p>`; return; }
-    if (!result.rows.length) { content.innerHTML = '<div class="empty-state">データがありません</div>'; return; }
-
-    const dates = (result.dates || []).map(d => String(d));
-    const recentDates = dates.slice(-14);
-
-    if (recentDates.length === 0) {
-      content.innerHTML = '<div class="empty-state">まだ記録がありません</div>';
+  if (!allRecords.length) {
+    document.getElementById('history-loading').style.display = 'flex';
+    document.getElementById('history-content').innerHTML = '';
+    document.getElementById('history-avg').style.display = 'none';
+    try {
+      const result = await gasCall('getMyRecords', { email: currentUser.email });
+      document.getElementById('history-loading').style.display = 'none';
+      if (!result.success) { document.getElementById('history-content').innerHTML = `<p style="color:var(--danger);font-size:13px;">${result.error}</p>`; return; }
+      allRecords = result.records || [];
+    } catch(e) {
+      document.getElementById('history-loading').style.display = 'none';
+      document.getElementById('history-content').innerHTML = '<p style="color:var(--danger);font-size:13px;">読み込みに失敗しました</p>';
       return;
     }
-
-    let html = '<table class="admin-table"><thead><tr><th>名前</th><th>教会</th>';
-    recentDates.forEach(d => {
-      const parts = d.split('-');
-      const label = parts.length === 3 ? parts[0] + '/' + parts[1] + '/' + parts[2] : d;
-      html += `<th style="white-space:nowrap;">${label}</th>`;
-    });
-    html += '</tr></thead><tbody>';
-    result.rows.forEach(row => {
-      html += `<tr><td style="white-space:nowrap;">${row.name}</td><td style="white-space:nowrap;color:var(--text-muted);">${row.church}</td>`;
-      recentDates.forEach(d => {
-        const records = row.records || {};
-        const t = records[d] || '';
-        const isCrown = (() => {
-          if (!t) return false;
-          const [h, m] = t.split(':').map(Number);
-          return h < 3 || (h === 3 && m === 0);
-        })();
-        const crown = isCrown ? '👑' : '';
-        html += `<td>${t ? `<span class="time-chip">${t}</span>${crown}` : '<span class="dash">-</span>'}</td>`;
-      });
-      html += '</tr>';
-    });
-    html += '</tbody></table>';
-    content.innerHTML = html;
-  } catch(e) {
-    loading.style.display = 'none';
-    content.innerHTML = '<p style="color:var(--danger);font-size:13px;">読み込みに失敗しました</p>';
   }
+
+  const months = buildMonthList(allRecords);
+  const today = new Date().toLocaleDateString('sv-SE');
+  const currentYM = today.slice(0, 7);
+  if (!currentHistoryMonth || !months.includes(currentHistoryMonth)) {
+    currentHistoryMonth = months.includes(currentYM) ? currentYM : (months[0] || currentYM);
+  }
+
+  // 月ボタン描画
+  const btnContainer = document.getElementById('history-month-btns');
+  btnContainer.innerHTML = '';
+  months.forEach(ym => {
+    const btn = document.createElement('button');
+    btn.className = 'btn-month' + (ym === currentHistoryMonth ? ' active' : '');
+    btn.textContent = monthLabel(ym);
+    btn.onclick = () => { currentHistoryMonth = ym; renderHistory(); };
+    btnContainer.appendChild(btn);
+  });
+
+  renderHistory();
 }
 
-function doLogout() {
-  currentUser = null;
-  // メアドは残してワンタップログインを維持
-  document.getElementById('login-error') && hideMsg('login-error');
-  showScreen('screen-login');
+function renderHistory() {
+  // 月ボタンのアクティブ更新
+  document.querySelectorAll('#history-month-btns .btn-month').forEach(btn => {
+    btn.classList.toggle('active', btn.textContent === monthLabel(currentHistoryMonth));
+  });
+
+  const filtered = allRecords.filter(r => getYearMonth(r.date) === currentHistoryMonth);
+  const streakMap = buildStreakMap(allRecords); // 全件で連続計算
+
+  // 平均計算
+  const [y, mo] = currentHistoryMonth.split('-');
+  const firstWeek = filtered.filter(r => {
+    const day = parseInt(r.date.split('-')[2]);
+    return day >= 1 && day <= 7 && isCrownTime(r.prayTime);
+  });
+  const allCrown = filtered.filter(r => isCrownTime(r.prayTime));
+
+  const avgBox = document.getElementById('history-avg');
+  if (filtered.length > 0) {
+    avgBox.style.display = '';
+    const calcAvg = (arr) => {
+      if (!arr.length) return null;
+      const mins = arr.map(r => timeToMinutes(r.prayTime)).filter(v => v !== null);
+      return mins.length ? minutesToTime(mins.reduce((a,b) => a+b, 0) / mins.length) : null;
+    };
+    const avg1 = calcAvg(firstWeek);
+    const avg2 = calcAvg(allCrown);
+    avgBox.innerHTML = `
+      <div class="avg-title">📊 ${monthLabel(currentHistoryMonth)}の平均お祈り開始時間（👑対象のみ）</div>
+      <div class="avg-row">
+        <div class="avg-item"><span class="avg-label">1〜7日の平均</span><span class="avg-val">${avg1 || '－'}</span></div>
+        <div class="avg-item"><span class="avg-label">当月全体の平均</span><span class="avg-val">${avg2 || '－'}</span></div>
+      </div>`;
+  } else {
+    avgBox.style.display = 'none';
+  }
+
+  const content = document.getElementById('history-content');
+  if (!filtered.length) { content.innerHTML = '<div class="empty-state">この月の記録がありません</div>'; return; }
+
+  const sorted = [...filtered].sort((a, b) => b.date.localeCompare(a.date));
+  let html = '<table><thead><tr><th>日付</th><th>お祈り開始時間</th></tr></thead><tbody>';
+  sorted.forEach(r => {
+    const timeVal = r.prayTime || '';
+    const s = streakMap[r.date] || 0;
+    const crown = (() => {
+      if (!isCrownTime(timeVal)) return '';
+      if (s % 7 === 0) return `<span class="crown-lg" title="${s}日連続達成！🎉">👑</span>`;
+      return `<span class="crown-sm" title="3:00以前！">👑</span>`;
+    })();
+    const streakLabel = (() => {
+      if (!isCrownTime(timeVal) || s === 0) return '';
+      if (s % 7 === 0) return `<span class="streak-badge">${s}日連続！🎉</span>`;
+      if (s >= 2) return `<span class="streak-sm">${s}日連続</span>`;
+      return '';
+    })();
+    html += `<tr><td>${formatDate(r.date)}</td><td><span class="time-chip">${timeVal}</span> ${crown}${streakLabel}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  content.innerHTML = html;
+}
+
+// ============================================================
+// 全員タブ
+// ============================================================
+
+async function loadAdmin() {
+  if (!allAdminData) {
+    document.getElementById('admin-loading').style.display = 'flex';
+    document.getElementById('admin-content').innerHTML = '';
+    try {
+      const result = await gasCall('getAllRecords', { email: currentUser.email });
+      document.getElementById('admin-loading').style.display = 'none';
+      if (!result.success) { document.getElementById('admin-content').innerHTML = `<p style="color:var(--danger);font-size:13px;">${result.error}</p>`; return; }
+      allAdminData = result;
+    } catch(e) {
+      document.getElementById('admin-loading').style.display = 'none';
+      document.getElementById('admin-content').innerHTML = '<p style="color:var(--danger);font-size:13px;">読み込みに失敗しました</p>';
+      return;
+    }
+  }
+
+  const dates = (allAdminData.dates || []).map(d => String(d));
+  const months = [...new Set(dates.map(d => getYearMonth(d)))].filter(Boolean).sort((a,b) => b.localeCompare(a));
+  const today = new Date().toLocaleDateString('sv-SE');
+  const currentYM = today.slice(0, 7);
+  if (!currentAdminMonth || !months.includes(currentAdminMonth)) {
+    currentAdminMonth = months.includes(currentYM) ? currentYM : (months[0] || currentYM);
+  }
+
+  // 月ボタン描画
+  const btnContainer = document.getElementById('admin-month-btns');
+  btnContainer.innerHTML = '';
+  months.forEach(ym => {
+    const btn = document.createElement('button');
+    btn.className = 'btn-month' + (ym === currentAdminMonth ? ' active' : '');
+    btn.textContent = monthLabel(ym);
+    btn.onclick = () => { currentAdminMonth = ym; renderAdmin(); };
+    btnContainer.appendChild(btn);
+  });
+
+  renderAdmin();
+}
+
+function renderAdmin() {
+  document.querySelectorAll('#admin-month-btns .btn-month').forEach(btn => {
+    btn.classList.toggle('active', btn.textContent === monthLabel(currentAdminMonth));
+  });
+
+  const dates = (allAdminData.dates || []).map(d => String(d));
+  const monthDates = dates.filter(d => getYearMonth(d) === currentAdminMonth).sort();
+
+  const content = document.getElementById('admin-content');
+  if (!monthDates.length) { content.innerHTML = '<div class="empty-state">この月の記録がありません</div>'; return; }
+
+  let html = '<table class="admin-table"><thead><tr><th>名前</th><th>教会</th>';
+  monthDates.forEach(d => {
+    const day = d.split('-')[2];
+    html += `<th>${parseInt(day)}日</th>`;
+  });
+  html += '</tr></thead><tbody>';
+
+  allAdminData.rows.forEach(row => {
+    // この人の全レコードで連続計算
+    const personRecords = monthDates
+      .map(d => ({ date: d, prayTime: (row.records || {})[d] || '' }))
+      .filter(r => r.prayTime);
+    // 全日付レコードを作成（連続計算用）
+    const allPersonRecords = dates.map(d => ({ date: d, prayTime: (row.records || {})[d] || '' }));
+    const streakMap = buildStreakMap(allPersonRecords);
+
+    html += `<tr><td style="white-space:nowrap;">${row.name}</td><td style="white-space:nowrap;color:var(--text-muted);">${row.church}</td>`;
+    monthDates.forEach(d => {
+      const t = (row.records || {})[d] || '';
+      if (!t) {
+        html += `<td><span class="dash">-</span></td>`;
+      } else {
+        const s = streakMap[d] || 0;
+        const crown = (() => {
+          if (!isCrownTime(t)) return '';
+          if (s % 7 === 0) return '👑';
+          return '<span style="font-size:12px;">👑</span>';
+        })();
+        html += `<td><span class="time-chip" style="font-size:11px;">${t}</span>${crown}</td>`;
+      }
+    });
+    html += '</tr>';
+  });
+
+  html += '</tbody></table>';
+  content.innerHTML = html;
 }
 </script>
 </body>
