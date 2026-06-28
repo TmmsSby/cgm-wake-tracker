@@ -177,6 +177,17 @@
   </div>
 </div>
 
+<!-- 確認モーダル -->
+<div id="confirm-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center; padding:1rem;">
+  <div style="background:#fff; border-radius:12px; padding:1.5rem; max-width:360px; width:100%; box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+    <p id="modal-message" style="font-size:14px; color:#1a1a1a; margin-bottom:1.25rem; line-height:1.6; white-space:pre-line;"></p>
+    <div style="display:flex; gap:8px;">
+      <button id="modal-cancel" style="flex:1; padding:10px; border-radius:6px; border:1px solid #ccc; background:#f5f5f5; color:#666; font-size:14px; font-family:inherit; cursor:pointer;">キャンセル</button>
+      <button id="modal-ok" style="flex:1; padding:10px; border-radius:6px; border:none; background:#2563eb; color:#fff; font-size:14px; font-weight:600; font-family:inherit; cursor:pointer;">上書きする</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbzNYecvvNX21ZCtePWC2MnSAZQ5jCkpbXdQ5ddmo9-bn9v-aTRyg7LhuFiQDfTdU0G8/exec';
 const ADMIN_EMAIL = 'korosuke19750223@gmail.com';
@@ -310,12 +321,38 @@ async function doSave() {
   const time = document.getElementById('input-time').value;
   hideMsg('input-error'); hideMsg('input-success');
   if (!date || !time) { showMsg('input-error', '日付と時間を入力してください', 'error'); return; }
+
+  // 既存レコードチェック
+  const existing = allRecords.find(r => r.date === date);
+  if (existing) {
+    const confirmed = await showConfirmModal(
+      `${date} はすでに ${existing.prayTime} で登録されています。
+上書きしますか？`
+    );
+    if (!confirmed) return;
+  }
+
   try {
     const result = await gasCall('saveRecord', { email: currentUser.email, date, prayTime: time });
     if (!result.success) { showMsg('input-error', result.error, 'error'); return; }
-    showMsg('input-success', result.updated ? '更新しました！' : '記録しました！', 'success');
-    allRecords = []; allAdminData = null; // キャッシュクリア
+    showMsg('input-success', result.updated ? '上書き保存しました！' : '記録しました！', 'success');
+    allRecords = []; allAdminData = null;
   } catch(e) { showMsg('input-error', 'エラーが発生しました', 'error'); }
+}
+
+function showConfirmModal(message) {
+  return new Promise((resolve) => {
+    document.getElementById('modal-message').textContent = message;
+    document.getElementById('confirm-modal').style.display = 'flex';
+    document.getElementById('modal-ok').onclick = () => {
+      document.getElementById('confirm-modal').style.display = 'none';
+      resolve(true);
+    };
+    document.getElementById('modal-cancel').onclick = () => {
+      document.getElementById('confirm-modal').style.display = 'none';
+      resolve(false);
+    };
+  });
 }
 
 // ============================================================
@@ -543,6 +580,56 @@ function renderAdmin() {
   const content = document.getElementById('admin-content');
   if (!monthDates.length) { content.innerHTML = '<div class="empty-state">この月の記録がありません</div>'; return; }
 
+  // 6月の場合は1〜7日平均ボックスを表示
+  const [adminY, adminM] = currentAdminMonth.split('-');
+  const firstWeekDates = monthDates.filter(d => parseInt(d.split('-')[2]) <= 7);
+
+  let summaryHtml = '';
+  if (firstWeekDates.length > 0) {
+    summaryHtml += `<div style="margin-bottom:1rem;">`;
+    summaryHtml += `<div style="font-size:13px; font-weight:700; color:var(--text-muted); margin-bottom:8px;">📊 ${adminY}年${parseInt(adminM)}月 1〜7日 平均お祈り開始時間</div>`;
+    summaryHtml += `<table style="width:100%; border-collapse:collapse; font-size:13px;">`;
+    summaryHtml += `<thead><tr>
+      <th style="text-align:left; padding:6px 8px; border-bottom:1px solid var(--border); color:var(--text-muted);">名前</th>
+      <th style="text-align:left; padding:6px 8px; border-bottom:1px solid var(--border); color:var(--text-muted);">教会</th>
+      <th style="text-align:left; padding:6px 8px; border-bottom:1px solid var(--border); color:var(--text-muted);">平均時間</th>
+      <th style="text-align:center; padding:6px 8px; border-bottom:1px solid var(--border); color:var(--text-muted);">入力日数</th>
+      <th style="text-align:center; padding:6px 8px; border-bottom:1px solid var(--border); color:var(--text-muted);">👑達成日数</th>
+    </tr></thead><tbody>`;
+
+    // 平均でソート用に先に計算
+    const rowsWithAvg = allAdminData.rows.map(row => {
+      const times = firstWeekDates.map(d => (row.records || {})[d]).filter(t => t);
+      const mins = times.map(t => timeToMinutes(t)).filter(v => v !== null);
+      const avg = mins.length ? minutesToTime(mins.reduce((a,b) => a+b,0) / mins.length) : null;
+      const crownDays = times.filter(t => isCrownTime(t)).length;
+      return { ...row, avg, count: times.length, crownDays };
+    });
+    rowsWithAvg.sort((a, b) => {
+      if (!a.avg && !b.avg) return 0;
+      if (!a.avg) return 1;
+      if (!b.avg) return -1;
+      return a.avg.localeCompare(b.avg);
+    });
+
+    rowsWithAvg.forEach((row) => {
+      const avgChip = row.avg
+        ? `<span class="time-chip">${row.avg}</span>${isCrownTime(row.avg) ? ' 👑' : ''}`
+        : '<span class="dash">－</span>';
+      const crownCell = row.crownDays > 0
+        ? `<span style="font-weight:700; color:var(--warning);">${row.crownDays}日 👑</span>`
+        : `<span style="color:var(--text-hint);">0日</span>`;
+      summaryHtml += `<tr>
+        <td style="padding:6px 8px; border-bottom:1px solid var(--border); white-space:nowrap;">${row.name}</td>
+        <td style="padding:6px 8px; border-bottom:1px solid var(--border); color:var(--text-muted); white-space:nowrap;">${row.church}</td>
+        <td style="padding:6px 8px; border-bottom:1px solid var(--border);">${avgChip}</td>
+        <td style="padding:6px 8px; border-bottom:1px solid var(--border); color:var(--text-muted); text-align:center;">${row.count}日</td>
+        <td style="padding:6px 8px; border-bottom:1px solid var(--border); text-align:center;">${crownCell}</td>
+      </tr>`;
+    });
+    summaryHtml += `</tbody></table></div>`;
+  }
+
   let html = '<table class="admin-table"><thead><tr><th>名前</th><th>教会</th>';
   monthDates.forEach(d => {
     const day = d.split('-')[2];
@@ -551,11 +638,6 @@ function renderAdmin() {
   html += '</tr></thead><tbody>';
 
   allAdminData.rows.forEach(row => {
-    // この人の全レコードで連続計算
-    const personRecords = monthDates
-      .map(d => ({ date: d, prayTime: (row.records || {})[d] || '' }))
-      .filter(r => r.prayTime);
-    // 全日付レコードを作成（連続計算用）
     const allPersonRecords = dates.map(d => ({ date: d, prayTime: (row.records || {})[d] || '' }));
     const streakMap = buildStreakMap(allPersonRecords);
 
@@ -578,7 +660,7 @@ function renderAdmin() {
   });
 
   html += '</tbody></table>';
-  content.innerHTML = html;
+  content.innerHTML = summaryHtml + html;
 }
 </script>
 </body>
