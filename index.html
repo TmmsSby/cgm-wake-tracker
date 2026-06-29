@@ -505,22 +505,118 @@ function renderHistory() {
   const content = document.getElementById('history-content');
   if (!filtered.length) { content.innerHTML = '<div class="empty-state">この月の記録がありません</div>'; return; }
 
+  // 集計期間連続日数マップ（毎月1〜7日、月ごとにリセット）
+  const buildCollectionStreakMap = (records) => {
+    const map = {};
+    const sortedAll = [...records].sort((a, b) => a.date.localeCompare(b.date));
+    let colStreak = 0;
+    let colMonth = '';
+    sortedAll.forEach(r => {
+      const ym = r.date.slice(0, 7);
+      const day = parseInt(r.date.split('-')[2]);
+      const inCol = day >= 1 && day <= 7;
+      if (ym !== colMonth) { colStreak = 0; colMonth = ym; }
+      if (!inCol) { map[r.date] = 0; return; }
+      colStreak = isCrownTime(r.prayTime) ? colStreak + 1 : 0;
+      map[r.date] = colStreak;
+    });
+    return map;
+  };
+  const collectionStreakMap = buildCollectionStreakMap(allRecords);
+
+  // 当月かどうか
+  const todayYM = new Date().toLocaleDateString('sv-SE').slice(0, 7);
+  const isCurrentMonth = currentHistoryMonth === todayYM;
+
+  // 前月以前のサマリー計算
+  if (!isCurrentMonth) {
+    const achieveDays = filtered.filter(r => isCrownTime(r.prayTime)).length;
+    const sortedForStreak = [...filtered].sort((a, b) => a.date.localeCompare(b.date));
+    let maxStreak = 0, curStreak = 0;
+    sortedForStreak.forEach((r, i) => {
+      if (!isCrownTime(r.prayTime)) { curStreak = 0; return; }
+      if (i === 0) { curStreak = 1; }
+      else {
+        const diff = (new Date(r.date) - new Date(sortedForStreak[i-1].date)) / 86400000;
+        curStreak = (diff === 1 && isCrownTime(sortedForStreak[i-1].prayTime)) ? curStreak + 1 : 1;
+      }
+      maxStreak = Math.max(maxStreak, curStreak);
+    });
+    const summaryBox = document.getElementById('history-avg');
+    if (filtered.length > 0) {
+      summaryBox.style.display = '';
+      summaryBox.innerHTML = `
+        <div class="avg-title">📊 ${monthLabel(currentHistoryMonth)}の記録</div>
+        <div class="avg-row">
+          <div class="avg-item">
+            <span class="avg-label">達成日数</span>
+            <span class="avg-val" style="color:var(--warning);">${achieveDays}日 👑</span>
+          </div>
+          <div class="avg-item">
+            <span class="avg-label">最大連続達成日数</span>
+            <span class="avg-val" style="color:var(--warning);">${maxStreak}日</span>
+          </div>
+          <div class="avg-item">
+            <span class="avg-label">1〜7日の平均</span>
+            <span class="avg-val">${(() => {
+              const fw = filtered.filter(r => parseInt(r.date.split('-')[2]) <= 7 && r.prayTime);
+              if (!fw.length) return '－';
+              return minutesToTime(fw.reduce((a, r) => a + timeToMinutes(r.prayTime), 0) / fw.length);
+            })()}</span>
+          </div>
+          <div class="avg-item">
+            <span class="avg-label">当月全体の平均</span>
+            <span class="avg-val">${(() => {
+              const am = filtered.filter(r => r.prayTime);
+              if (!am.length) return '－';
+              return minutesToTime(am.reduce((a, r) => a + timeToMinutes(r.prayTime), 0) / am.length);
+            })()}</span>
+          </div>
+        </div>`;
+    }
+  }
+
   const sorted = [...filtered].sort((a, b) => b.date.localeCompare(a.date));
   let html = '<table><thead><tr><th>日付</th><th>お祈り開始時間</th></tr></thead><tbody>';
   sorted.forEach(r => {
     const timeVal = r.prayTime || '';
-    const s = streakMap[r.date] || 0;
+    const totalS = streakMap[r.date] || 0;
+    const colS = collectionStreakMap[r.date] || 0;
+    const day = parseInt(r.date.split('-')[2]);
+    const inCollection = day >= 1 && day <= 7;
+
     const crown = (() => {
       if (!isCrownTime(timeVal)) return '';
-      if (s % 7 === 0) return `<span class="crown-lg" title="${s}日連続達成！🎉">👑</span>`;
-      return `<span class="crown-sm" title="3:00以前！">👑</span>`;
+      if (totalS % 7 === 0 && totalS > 0) return `<span class="crown-lg">👑</span>`;
+      return `<span class="crown-sm">👑</span>`;
     })();
+
     const streakLabel = (() => {
-      if (!isCrownTime(timeVal) || s === 0) return '';
-      if (s % 7 === 0) return `<span class="streak-badge">${s}日連続！🎉</span>`;
-      if (s >= 2) return `<span class="streak-sm">${s}日連続</span>`;
-      return '';
+      if (!isCrownTime(timeVal)) return '';
+      const parts = [];
+
+      // 集計期間（1〜7日）の表示
+      if (inCollection && colS >= 1) {
+        const colText = colS % 7 === 0
+          ? `<span class="streak-badge">集計期間継続 ${colS}日達成！🎉</span>`
+          : `<span class="streak-sm">集計期間継続 ${colS}日達成</span>`;
+        parts.push(colText);
+      }
+
+      // 通算連続（1日以上、前月からの継続も含む）
+      if (totalS >= 1) {
+        const totalText = totalS % 7 === 0
+          ? `<span class="streak-badge">通算 ${totalS}日連続達成中！🎉</span>`
+          : `<span class="streak-sm">通算 ${totalS}日連続達成中</span>`;
+        // 集計期間と通算が同じ値なら通算は省略（重複防止）
+        if (!inCollection || totalS !== colS) {
+          parts.push(totalText);
+        }
+      }
+
+      return parts.join(' ');
     })();
+
     html += `<tr><td>${formatDate(r.date)}</td><td><span class="time-chip">${timeVal}</span> ${crown}${streakLabel}</td></tr>`;
   });
   html += '</tbody></table>';
