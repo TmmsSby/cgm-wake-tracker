@@ -474,36 +474,12 @@ function renderHistory() {
   const filtered = allRecords.filter(r => getYearMonth(r.date) === currentHistoryMonth);
   const streakMap = buildStreakMap(allRecords); // 全件で連続計算
 
-  // 平均計算
-  const [y, mo] = currentHistoryMonth.split('-');
-  const firstWeek = filtered.filter(r => {
-    const day = parseInt(r.date.split('-')[2]);
-    return day >= 1 && day <= 7 && r.prayTime;
-  });
-  const allMonth = filtered.filter(r => r.prayTime);
-
-  const avgBox = document.getElementById('history-avg');
-  if (filtered.length > 0) {
-    avgBox.style.display = '';
-    const calcAvg = (arr) => {
-      if (!arr.length) return null;
-      const mins = arr.map(r => timeToMinutes(r.prayTime)).filter(v => v !== null);
-      return mins.length ? minutesToTime(mins.reduce((a,b) => a+b, 0) / mins.length) : null;
-    };
-    const avg1 = calcAvg(firstWeek);
-    const avg2 = calcAvg(allMonth);
-    avgBox.innerHTML = `
-      <div class="avg-title">📊 ${monthLabel(currentHistoryMonth)}の平均お祈り開始時間</div>
-      <div class="avg-row">
-        <div class="avg-item"><span class="avg-label">1〜7日の平均</span><span class="avg-val">${avg1 || '－'}</span></div>
-        <div class="avg-item"><span class="avg-label">当月全体の平均</span><span class="avg-val">${avg2 || '－'}</span></div>
-      </div>`;
-  } else {
-    avgBox.style.display = 'none';
-  }
-
   const content = document.getElementById('history-content');
-  if (!filtered.length) { content.innerHTML = '<div class="empty-state">この月の記録がありません</div>'; return; }
+  if (!filtered.length) {
+    document.getElementById('history-avg').style.display = 'none';
+    content.innerHTML = '<div class="empty-state">この月の記録がありません</div>';
+    return;
+  }
 
   // 当月かどうか
   const todayYM = new Date().toLocaleDateString('sv-SE').slice(0, 7);
