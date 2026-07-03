@@ -322,17 +322,17 @@ async function doSave() {
   hideMsg('input-error'); hideMsg('input-success');
   if (!date || !time) { showMsg('input-error', '日付と時間を入力してください', 'error'); return; }
 
-  // 既存レコードチェック
-  const existing = allRecords.find(r => r.date === date);
-  if (existing) {
-    const confirmed = await showConfirmModal(
-      `${date} はすでに ${existing.prayTime} で登録されています。
-上書きしますか？`
-    );
-    if (!confirmed) return;
-  }
-
   try {
+    // 必ずGASに問い合わせて既存チェック（キャッシュに依存しない）
+    const check = await gasCall('getRecordByDate', { email: currentUser.email, date });
+    if (check.success && check.record) {
+      const confirmed = await showConfirmModal(
+        `${date} はすでに ${check.record.prayTime} で登録されています。
+上書きしますか？`
+      );
+      if (!confirmed) return;
+    }
+
     const result = await gasCall('saveRecord', { email: currentUser.email, date, prayTime: time });
     if (!result.success) { showMsg('input-error', result.error, 'error'); return; }
     showMsg('input-success', result.updated ? '上書き保存しました！' : '記録しました！', 'success');
@@ -386,22 +386,26 @@ function formatDate(d) {
   return parts.length === 3 ? parts[0] + '/' + parts[1] + '/' + parts[2] : d;
 }
 
-// 連続達成日数マップを作成
+// 連続達成日数マップを作成（重複日付は最初の1件のみ使用）
 function buildStreakMap(records) {
-  const sorted = [...records].sort((a, b) => a.date.localeCompare(b.date));
+  // 重複除去：同じ日付は最初のレコードのみ使用
+  const seen = new Set();
+  const deduped = [];
+  [...records].sort((a, b) => a.date.localeCompare(b.date)).forEach(r => {
+    if (!seen.has(r.date)) { seen.add(r.date); deduped.push(r); }
+  });
+
   const streakMap = {};
   let streak = 0;
-  sorted.forEach((r, i) => {
+  deduped.forEach((r, i) => {
     if (!isCrownTime(r.prayTime)) {
       streak = 0;
     } else {
       if (i === 0) {
         streak = 1;
       } else {
-        const prev = sorted[i - 1];
-        const prevDate = new Date(prev.date);
-        const curDate = new Date(r.date);
-        const diff = (curDate - prevDate) / (1000 * 60 * 60 * 24);
+        const prev = deduped[i - 1];
+        const diff = (new Date(r.date) - new Date(prev.date)) / (1000 * 60 * 60 * 24);
         streak = (diff === 1 && isCrownTime(prev.prayTime)) ? streak + 1 : 1;
       }
     }
