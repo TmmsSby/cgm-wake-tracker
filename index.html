@@ -547,11 +547,12 @@ function renderHistory() {
           <div style="font-size:13px; font-weight:700; color:var(--warning); margin-bottom:6px;">
             📋 ${parseInt(mo)}月 集計期間（1〜7日）
           </div>
-          <div style="display:flex; gap:1.5rem; flex-wrap:wrap; font-size:13px;">
+          <div style="display:flex; gap:1.5rem; flex-wrap:wrap; font-size:13px; margin-bottom:8px;">
             <div><span style="color:var(--text-muted);">連続達成</span><br>${streakText}</div>
             <div><span style="color:var(--text-muted);">${collectionTotal}日中</span><br>
               <span style="font-weight:700; color:var(--warning);">${collectionAchieve}日達成 👑</span></div>
           </div>
+          <div id="total-streak-box" style="display:none; padding-top:6px; border-top:1px solid rgba(180,83,9,0.2);"></div>
         </div>`;
     }
     // 平均ボックス
@@ -590,24 +591,68 @@ function renderHistory() {
       </div>`;
   }
 
+  // 集計期間（1〜7日）内の連続日数マップ（当月のみ、月内でリセット）
+  const buildColStreakMap = (records) => {
+    const map = {};
+    const colOnly = records
+      .filter(r => parseInt(r.date.split('-')[2]) <= 7)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    // 重複除去
+    const seen = new Set();
+    const deduped = [];
+    colOnly.forEach(r => { if (!seen.has(r.date)) { seen.add(r.date); deduped.push(r); } });
+    let s = 0;
+    deduped.forEach((r, i) => {
+      if (!isCrownTime(r.prayTime)) { s = 0; }
+      else if (i === 0) { s = 1; }
+      else {
+        const diff = (new Date(r.date) - new Date(deduped[i-1].date)) / 86400000;
+        s = (diff === 1 && isCrownTime(deduped[i-1].prayTime)) ? s + 1 : 1;
+      }
+      map[r.date] = s;
+    });
+    return map;
+  };
+  const colStreakMap = buildColStreakMap(allRecords.filter(r => getYearMonth(r.date) === currentHistoryMonth));
+
+  // 通算連続（全件）の現在値を取得
+  const latestRecord = [...allRecords].filter(r => r.prayTime).sort((a,b) => b.date.localeCompare(a.date))[0];
+  const currentTotalStreak = latestRecord ? (streakMap[latestRecord.date] || 0) : 0;
+
+  // 通算連続を集計期間ボックス内に表示（当月のみ）
+  if (isCurrentMonth && currentTotalStreak >= 1) {
+    const totalStreakEl = document.getElementById('total-streak-box');
+    if (totalStreakEl) {
+      totalStreakEl.style.display = '';
+      const totalText = currentTotalStreak % 7 === 0
+        ? `<span class="streak-badge">通算 ${currentTotalStreak}日連続達成中！🎉</span>`
+        : `<span class="streak-sm" style="font-size:13px;">通算 ${currentTotalStreak}日連続達成中</span>`;
+      totalStreakEl.innerHTML = totalText;
+    }
+  }
+
   const sorted = [...filtered].sort((a, b) => b.date.localeCompare(a.date));
   let html = '<table><thead><tr><th>日付</th><th>お祈り開始時間</th></tr></thead><tbody>';
   sorted.forEach(r => {
     const timeVal = r.prayTime || '';
-    const totalS = streakMap[r.date] || 0;
+    const day = parseInt(r.date.split('-')[2]);
+    const inCollection = day >= 1 && day <= 7;
+    const colS = colStreakMap[r.date] || 0;
 
     const crown = (() => {
       if (!isCrownTime(timeVal)) return '';
-      if (totalS % 7 === 0 && totalS > 0) return `<span class="crown-lg">👑</span>`;
+      if (inCollection && colS % 7 === 0 && colS > 0) return `<span class="crown-lg">👑</span>`;
       return `<span class="crown-sm">👑</span>`;
     })();
 
     const streakLabel = (() => {
-      if (!isCrownTime(timeVal) || totalS === 0) return '';
-      if (totalS % 7 === 0) return `<span class="streak-badge">連続${totalS}日達成中！🎉</span>`;
-      if (totalS >= 2) return `<span class="streak-sm">連続${totalS}日達成中</span>`;
-      // 1日目でも前月から続いている可能性があるので totalS=1 も表示
-      if (totalS === 1) return `<span class="streak-sm">連続1日達成中</span>`;
+      if (!isCrownTime(timeVal)) return '';
+      // 集計期間内のみ連続日数表示
+      if (inCollection && colS >= 1) {
+        if (colS % 7 === 0) return `<span class="streak-badge">集計期間${colS}日連続！🎉</span>`;
+        if (colS >= 2) return `<span class="streak-sm">集計期間${colS}日連続</span>`;
+        return `<span class="streak-sm">集計期間1日目</span>`;
+      }
       return '';
     })();
 
