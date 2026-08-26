@@ -148,7 +148,7 @@
         <input type="date" id="input-date" />
         <label for="input-time">お祈り開始時間</label>
         <input type="time" id="input-time" />
-        <button class="btn-primary" onclick="doSave()">保存する</button>
+        <button class="btn-primary" onclick="doSave.call(this)">保存する</button>
         <div class="msg msg-error" id="input-error"></div>
         <div class="msg msg-success" id="input-success"></div>
       </div>
@@ -293,6 +293,19 @@ function enterMain() {
   document.getElementById('input-date').value = today;
   allRecords = []; allAdminData = null;
   showTab('input');
+  // ログイン直後にバックグラウンドで全レコードを先読み
+  prefetchRecords();
+}
+
+async function prefetchRecords() {
+  try {
+    const result = await gasCall('getMyRecords', { email: currentUser.email });
+    if (result.success) {
+      allRecords = result.records || [];
+    }
+  } catch(e) {
+    // 先読み失敗は無視（保存時に再取得）
+  }
 }
 
 function doLogout() {
@@ -322,22 +335,40 @@ async function doSave() {
   hideMsg('input-error'); hideMsg('input-success');
   if (!date || !time) { showMsg('input-error', '日付と時間を入力してください', 'error'); return; }
 
-  try {
-    // 必ずGASに問い合わせて既存チェック（キャッシュに依存しない）
-    const check = await gasCall('getRecordByDate', { email: currentUser.email, date });
-    if (check.success && check.record) {
-      const confirmed = await showConfirmModal(
-        `${date} はすでに ${check.record.prayTime} で登録されています。
+  // キャッシュで既存チェック（GAS問い合わせなし → 高速）
+  const existing = allRecords.find(r => r.date === date);
+  if (existing) {
+    const confirmed = await showConfirmModal(
+      `${date} はすでに ${existing.prayTime} で登録されています。
 上書きしますか？`
-      );
-      if (!confirmed) return;
-    }
+    );
+    if (!confirmed) return;
+  }
 
+  // 保存ボタンをローディング表示（体感速度アップ）
+  const btn = document.querySelector('#tab-input .btn-primary');
+  const origText = btn.innerHTML;
+  btn.innerHTML = '<span class="spinner"></span> 保存中...';
+  btn.disabled = true;
+
+  try {
     const result = await gasCall('saveRecord', { email: currentUser.email, date, prayTime: time });
     if (!result.success) { showMsg('input-error', result.error, 'error'); return; }
     showMsg('input-success', result.updated ? '上書き保存しました！' : '記録しました！', 'success');
-    allRecords = []; allAdminData = null;
-  } catch(e) { showMsg('input-error', 'エラーが発生しました', 'error'); }
+    // キャッシュを更新（再取得なし → 高速）
+    const idx = allRecords.findIndex(r => r.date === date);
+    if (idx >= 0) {
+      allRecords[idx].prayTime = time;
+    } else {
+      allRecords.push({ date, prayTime: time });
+    }
+    allAdminData = null;
+  } catch(e) {
+    showMsg('input-error', 'エラーが発生しました', 'error');
+  } finally {
+    btn.innerHTML = origText;
+    btn.disabled = false;
+  }
 }
 
 function showConfirmModal(message) {
