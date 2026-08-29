@@ -4,11 +4,50 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CGM データ移行ツール</title>
+  <style>
+    body { font-family: sans-serif; max-width: 700px; margin: 2rem auto; padding: 0 1rem; background: #f5f4f0; }
+    .card { background: #fff; border-radius: 10px; padding: 1.5rem; margin-bottom: 1rem; }
+    h1 { font-size: 18px; margin-bottom: 1rem; }
+    h2 { font-size: 15px; margin-bottom: 0.75rem; color: #444; }
+    textarea { width: 100%; height: 150px; font-size: 12px; font-family: monospace; border: 1px solid #ccc; border-radius: 6px; padding: 8px; margin-bottom: 1rem; box-sizing: border-box; }
+    button { padding: 10px 20px; background: #2563eb; color: #fff; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; margin-right: 8px; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.danger { background: #dc2626; }
+    #log { background: #1a1a1a; color: #eee; border-radius: 6px; padding: 1rem; height: 250px; overflow-y: auto; font-size: 13px; font-family: monospace; margin-top: 1rem; }
+    p { font-size: 13px; color: #666; margin-bottom: 1rem; line-height: 1.6; }
+    #login-section, #migrate-section { }
+    #migrate-section { display: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🔄 CGM データ移行ツール</h1>
+
+    <div id="login-section">
+      <p>管理者アカウントでGoogleログインしてください。</p>
+      <button id="login-btn" onclick="doLogin()">Googleログイン</button>
+    </div>
+
+    <div id="migrate-section">
+      <p id="user-info" style="color:#16a34a; font-weight:bold;"></p>
+
+      <h2>① membersシートの内容（ヘッダーなし）</h2>
+      <textarea id="members-data" placeholder="user@gmail.com	山田太郎	○○教会	2026/05/29 12:00"></textarea>
+
+      <h2>② recordsシートの内容（ヘッダーなし）</h2>
+      <textarea id="records-data" placeholder="user@gmail.com	2026-06-01	03:00	2026/06/01 03:01"></textarea>
+
+      <button id="migrate-btn" onclick="doMigrate()">移行開始</button>
+      <button class="danger" onclick="doDeleteRecords()">recordsだけ削除</button>
+      <div id="log"></div>
+    </div>
+  </div>
+
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
     import { getAuth, GoogleAuthProvider, signInWithPopup }
       from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-    import { getFirestore, doc, setDoc, writeBatch, collection }
+    import { getFirestore, doc, setDoc, deleteDoc, writeBatch, collection, getDocs }
       from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
     const firebaseConfig = {
@@ -27,143 +66,126 @@
 
     function log(msg, type = 'info') {
       const el = document.getElementById('log');
-      const color = type === 'error' ? '#dc2626' : type === 'success' ? '#16a34a' : '#333';
-      el.innerHTML += `<div style="color:${color};margin-bottom:4px;">${msg}</div>`;
+      const color = type === 'error' ? '#f87171' : type === 'success' ? '#4ade80' : '#e5e7eb';
+      el.innerHTML += `<div style="color:${color}">${msg}</div>`;
       el.scrollTop = el.scrollHeight;
     }
 
-    window.doLogin = async function() {
-      try {
-        await signInWithPopup(auth, provider);
-        document.getElementById('login-section').style.display = 'none';
-        document.getElementById('migrate-section').style.display = 'block';
-        log('✅ 管理者ログイン完了');
-      } catch(e) {
-        log('❌ ログイン失敗: ' + e.message, 'error');
-      }
-    };
-
-    window.doMigrate = async function() {
-      const membersText = document.getElementById('members-data').value.trim();
-      const recordsText = document.getElementById('records-data').value.trim();
-      if (!membersText || !recordsText) {
-        log('❌ データを入力してください', 'error'); return;
-      }
-
-      document.getElementById('migrate-btn').disabled = true;
-      log('🗑️ 既存recordsを削除中...');
-      // 既存recordsを全削除してから再移行
-      const existingSnap = await getDocs(collection(db, 'records'));
-      for (let i = 0; i < existingSnap.docs.length; i += 500) {
-        const batch = writeBatch(db);
-        existingSnap.docs.slice(i, i + 500).forEach(d => batch.delete(d.ref));
-        await batch.commit();
-      }
-      log(`✅ 既存records ${existingSnap.docs.length}件削除完了`);
-      log('🚀 移行開始...');
-
-      // membersパース（重複はスキップ）
+    function parseMembers(text) {
       const members = {};
-      membersText.split('\n').forEach(line => {
+      text.split('\n').forEach(line => {
         const parts = line.split('\t');
-        if (parts.length >= 3 && parts[0].includes('@')) {
-          const email = parts[0].trim();
-          if (!members[email]) {
-            members[email] = { email, name: parts[1].trim(), church: parts[2].trim() };
-          }
-        }
+        if (parts.length < 3) return;
+        const email = parts[0].trim();
+        const name = parts[1].trim();
+        const church = parts[2].trim();
+        if (!email.includes('@') || !name) return;
+        if (!members[email]) members[email] = { email, name, church };
       });
-      log(`📋 メンバー数: ${Object.keys(members).length}名`);
+      return members;
+    }
 
-      // recordsパース（重複は後者を採用、ヘッダー行・不正行をスキップ）
+    function parseRecords(text) {
       const records = {};
-      recordsText.split('\n').forEach(line => {
+      text.split('\n').forEach(line => {
         const parts = line.split('\t');
         if (parts.length < 3) return;
         const email = parts[0].trim();
         const date = parts[1].trim();
         const prayTime = parts[2].trim();
         if (!email.includes('@')) return;
-        if (!date.match(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/)) return;
-        if (!prayTime.match(/^[0-9]{1,2}:[0-9]{2}$/)) return;
+        if (!date.includes('-') || date.length !== 10) return;
+        if (!prayTime.includes(':')) return;
         const key = email + '_' + date;
         records[key] = { email, date, prayTime };
       });
-      log(`📝 レコード数: ${Object.keys(records).length}件`);
+      return records;
+    }
+
+    async function batchWrite(collectionName, entries, toData) {
+      for (let i = 0; i < entries.length; i += 400) {
+        const batch = writeBatch(db);
+        entries.slice(i, i + 400).forEach(([id, data]) => {
+          batch.set(doc(db, collectionName, id), toData(data));
+        });
+        await batch.commit();
+        log(`  → ${Math.min(i + 400, entries.length)}/${entries.length} 件完了`);
+      }
+    }
+
+    async function deleteCollection(collectionName) {
+      const snap = await getDocs(collection(db, collectionName));
+      log(`🗑️ ${snap.docs.length}件削除します...`);
+      for (let i = 0; i < snap.docs.length; i += 400) {
+        const batch = writeBatch(db);
+        snap.docs.slice(i, i + 400).forEach(d => batch.delete(d.ref));
+        await batch.commit();
+        log(`  → ${Math.min(i + 400, snap.docs.length)}/${snap.docs.length} 件削除完了`);
+      }
+    }
+
+    window.doLogin = async function() {
+      document.getElementById('login-btn').disabled = true;
+      try {
+        const result = await signInWithPopup(auth, provider);
+        document.getElementById('login-section').style.display = 'none';
+        document.getElementById('migrate-section').style.display = 'block';
+        document.getElementById('user-info').textContent = '✅ ログイン済み: ' + result.user.email;
+        log('管理者ログイン完了: ' + result.user.email, 'success');
+      } catch(e) {
+        log('❌ ログイン失敗: ' + e.message, 'error');
+        document.getElementById('login-btn').disabled = false;
+      }
+    };
+
+    window.doDeleteRecords = async function() {
+      if (!confirm('recordsコレクションを全削除しますか？')) return;
+      document.getElementById('migrate-btn').disabled = true;
+      try {
+        log('--- records削除開始 ---');
+        await deleteCollection('records');
+        log('✅ 削除完了！', 'success');
+      } catch(e) {
+        log('❌ エラー: ' + e.message, 'error');
+      }
+      document.getElementById('migrate-btn').disabled = false;
+    };
+
+    window.doMigrate = async function() {
+      const membersText = document.getElementById('members-data').value.trim();
+      const recordsText = document.getElementById('records-data').value.trim();
+      document.getElementById('migrate-btn').disabled = true;
+      log('--- 移行開始 ---');
 
       try {
-        // membersをバッチ書き込み（500件ずつ）
-        const memberEntries = Object.entries(members);
-        for (let i = 0; i < memberEntries.length; i += 500) {
-          const batch = writeBatch(db);
-          memberEntries.slice(i, i + 500).forEach(([email, data]) => {
-            batch.set(doc(db, 'members', email), {
-              email: data.email,
-              name: data.name,
-              church: data.church,
-              createdAt: new Date().toISOString()
-            });
-          });
-          await batch.commit();
-          log(`✅ メンバー ${Math.min(i+500, memberEntries.length)}/${memberEntries.length} 完了`);
+        if (membersText) {
+          const members = parseMembers(membersText);
+          const memberEntries = Object.entries(members);
+          log(`📋 メンバー: ${memberEntries.length}名`);
+          await batchWrite('members', memberEntries, data => ({
+            email: data.email, name: data.name, church: data.church,
+            createdAt: new Date().toISOString()
+          }));
+          log('✅ メンバー移行完了', 'success');
         }
 
-        // recordsをバッチ書き込み（500件ずつ）
-        const recordEntries = Object.entries(records);
-        for (let i = 0; i < recordEntries.length; i += 500) {
-          const batch = writeBatch(db);
-          recordEntries.slice(i, i + 500).forEach(([key, data]) => {
-            batch.set(doc(db, 'records', key), {
-              email: data.email,
-              date: data.date,
-              prayTime: data.prayTime,
-              recordedAt: new Date().toISOString()
-            });
-          });
-          await batch.commit();
-          log(`✅ レコード ${Math.min(i+500, recordEntries.length)}/${recordEntries.length} 完了`);
+        if (recordsText) {
+          const records = parseRecords(recordsText);
+          const recordEntries = Object.entries(records);
+          log(`📝 レコード: ${recordEntries.length}件`);
+          await batchWrite('records', recordEntries, data => ({
+            email: data.email, date: data.date, prayTime: data.prayTime,
+            recordedAt: new Date().toISOString()
+          }));
+          log('✅ レコード移行完了', 'success');
         }
 
-        log('🎉 移行完了！', 'success');
+        log('🎉 全移行完了！', 'success');
       } catch(e) {
         log('❌ エラー: ' + e.message, 'error');
       }
       document.getElementById('migrate-btn').disabled = false;
     };
   </script>
-  <style>
-    body { font-family: sans-serif; max-width: 700px; margin: 2rem auto; padding: 0 1rem; background: #f5f4f0; }
-    .card { background: #fff; border-radius: 10px; padding: 1.5rem; margin-bottom: 1rem; }
-    h1 { font-size: 18px; margin-bottom: 1rem; }
-    h2 { font-size: 15px; margin-bottom: 0.75rem; color: #444; }
-    textarea { width: 100%; height: 150px; font-size: 12px; font-family: monospace; border: 1px solid #ccc; border-radius: 6px; padding: 8px; margin-bottom: 1rem; }
-    button { padding: 10px 20px; background: #2563eb; color: #fff; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
-    #log { background: #1a1a1a; color: #eee; border-radius: 6px; padding: 1rem; height: 200px; overflow-y: auto; font-size: 13px; font-family: monospace; margin-top: 1rem; }
-    p { font-size: 13px; color: #666; margin-bottom: 1rem; line-height: 1.6; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h1>🔄 CGM データ移行ツール</h1>
-    <p>スプレッドシートのデータをFirestoreに移行します。管理者アカウントでログインしてください。</p>
-
-    <div id="login-section">
-      <button onclick="doLogin()">管理者Googleログイン</button>
-    </div>
-
-    <div id="migrate-section" style="display:none;">
-      <h2>① membersシートの内容を貼り付け</h2>
-      <p>スプレッドシートのmembersシートを全選択してコピー→貼り付け</p>
-      <textarea id="members-data" placeholder="email	name	church	created_at&#10;user@gmail.com	山田太郎	○○教会	2026/05/29"></textarea>
-
-      <h2>② recordsシートの内容を貼り付け</h2>
-      <p>スプレッドシートのrecordsシートを全選択してコピー→貼り付け</p>
-      <textarea id="records-data" placeholder="email	date	wake_time	recorded_at&#10;user@gmail.com	2026-06-01	03:00	2026/06/01 03:01"></textarea>
-
-      <button id="migrate-btn" onclick="doMigrate()">移行開始</button>
-      <div id="log"></div>
-    </div>
-  </div>
 </body>
 </html>
