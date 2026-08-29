@@ -190,10 +190,9 @@
 
     async function prefetchRecords() {
       try {
-        const q = query(collection(db, 'records'), where('email', '==', currentUser.email), orderBy('date'));
-        const snap = await getDocs(q);
-        allRecords = snap.docs.map(d => d.data());
-      } catch(e) {}
+        const snap = await getDocs(query(collection(db, 'records'), where('email', '==', currentUser.email)));
+        allRecords = snap.docs.map(d => d.data()).sort((a,b) => a.date.localeCompare(b.date));
+      } catch(e) { console.error('prefetch失敗:', e.code, e.message); }
     }
 
     // ============================================================
@@ -259,12 +258,14 @@
         document.getElementById('history-loading').style.display = 'flex';
         document.getElementById('history-content').innerHTML = '';
         try {
-          const q = query(collection(db, 'records'), where('email', '==', currentUser.email), orderBy('date'));
-          const snap = await getDocs(q);
-          allRecords = snap.docs.map(d => d.data());
+          const snap = await getDocs(query(collection(db, 'records'), where('email', '==', currentUser.email)));
+          allRecords = snap.docs.map(d => d.data()).sort((a,b) => a.date.localeCompare(b.date));
         } catch(e) {
+          console.error('履歴読み込み失敗:', e.code, e.message, e);
           document.getElementById('history-loading').style.display = 'none';
-          document.getElementById('history-content').innerHTML = '<p style="color:var(--danger);font-size:13px;">読み込みに失敗しました</p>';
+          document.getElementById('history-content').innerHTML =
+            '<p style="color:var(--danger);font-size:13px;">読み込みに失敗しました<br>' +
+            '<span style="font-size:11px;color:#666;">' + (e.code || '') + ' / ' + (e.message || '') + '</span></p>';
           return;
         }
         document.getElementById('history-loading').style.display = 'none';
@@ -439,14 +440,23 @@
         try {
           const [membersSnap, recordsSnap] = await Promise.all([
             getDocs(collection(db, 'members')),
-            getDocs(query(collection(db, 'records'), orderBy('date')))
+            getDocs(collection(db, 'records'))
           ]);
           const members = {};
-          membersSnap.docs.forEach(d => { members[d.data().email] = { name: d.data().name, church: d.data().church }; });
+          membersSnap.docs.forEach(d => {
+            const data = d.data();
+            if (data.email && data.name) {
+              members[data.email] = { name: data.name, church: data.church || '' };
+            }
+          });
           const records = {};
           const dates = new Set();
           recordsSnap.docs.forEach(d => {
-            const { email, date, prayTime } = d.data();
+            const data = d.data();
+            const email = data.email;
+            const date = data.date;
+            const prayTime = data.prayTime;
+            if (!email || !date || !prayTime) return;
             if (!records[email]) records[email] = {};
             records[email][date] = prayTime;
             dates.add(date);
