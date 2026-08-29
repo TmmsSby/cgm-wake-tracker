@@ -1,762 +1,763 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>CP21日条件アプリ</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@400;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<style>
-:root{
-  --sumi:#FFFFFF;      /* ヘッダー地 */
-  --ai:#ED3615;        /* 操作色（差し色） */
-  --ai-dark:#C42A0E;   /* 押したとき */
-  --ai-tint:#FDF0EC;   /* 淡い下地 */
-  --akebono:#ED3615;   /* 強調 */
-  --hakuji:#FAF8F6;    /* 背景 */
-  --ink:#2A231F;
-  --gray:#7A7069;
-  --line:#E6DFDA;
-  --white:#FFFFFF;
-  --danger:#B4413C;
-  --r:10px;
-  --shadow:0 1px 2px rgba(42,35,31,.05), 0 8px 24px rgba(42,35,31,.05);
-}
-*{box-sizing:border-box}
-html,body{margin:0;padding:0}
-body{
-  background:var(--hakuji);
-  color:var(--ink);
-  font-family:"Zen Kaku Gothic New",-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic",sans-serif;
-  font-size:15px; line-height:1.7;
-  -webkit-text-size-adjust:100%;
-}
-h1,h2,h3{font-family:"Zen Old Mincho",serif;font-weight:700;letter-spacing:.04em;margin:0}
-.num{font-family:"DM Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
-button{font-family:inherit}
-a{color:var(--ai)}
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>お祈り開始時間トラッカー | CGM</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+    import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+      from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+    import { getFirestore, doc, getDoc, setDoc, collection, query, where, getDocs, orderBy }
+      from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
-/* ---- 外枠 ---- */
-.topbar{
-  background:var(--sumi); color:var(--ink);
-  border-top:3px solid var(--ai);
-  border-bottom:1px solid var(--line);
-  padding:12px 18px;
-  display:flex; align-items:center; justify-content:space-between; gap:12px;
-}
-.brand{display:flex; align-items:center; gap:11px; min-width:0}
-.brand img{width:38px; height:38px; flex:none; display:block}
-.topbar h1{font-size:16px; color:var(--ink)}
-.topbar .who{font-size:11.5px; color:var(--gray); margin-top:1px;
-  overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-.linkbtn{background:#fff;border:1px solid var(--line);color:var(--gray);
-  border-radius:999px;padding:6px 13px;font-size:12.5px;cursor:pointer}
-.linkbtn:hover{background:var(--ai-tint);border-color:#F0BDB0;color:var(--ai-dark)}
-.wrap{max-width:940px;margin:0 auto;padding:20px 16px 72px}
-.card{background:var(--white);border:1px solid var(--line);border-radius:var(--r);
-  box-shadow:var(--shadow);padding:20px;margin-bottom:16px}
-.card h2{font-size:16px;margin-bottom:4px}
-.card h2.withico{display:flex;align-items:center;gap:9px}
-.card .sub{font-size:12.5px;color:var(--gray);margin-bottom:16px}
+    const firebaseConfig = {
+      apiKey: "AIzaSyD0FXYbX7ck2RduoSI6w8oUdabQWsBW16U",
+      authDomain: "cgm-wake-tracker.firebaseapp.com",
+      projectId: "cgm-wake-tracker",
+      storageBucket: "cgm-wake-tracker.firebasestorage.app",
+      messagingSenderId: "337536228102",
+      appId: "1:337536228102:web:af75a83cff745a878d1c87"
+    };
 
-/* ---- フォーム ---- */
-label{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;margin-bottom:7px;color:var(--ink)}
-.ico{flex:none;width:26px;height:26px;border-radius:8px;background:var(--ai-tint);color:var(--ai);
-  display:inline-flex;align-items:center;justify-content:center}
-.ico svg{width:16px;height:16px}
-input,select{
-  width:100%;padding:12px 13px;font-size:16px;font-family:inherit;
-  border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);
-}
-input[type=time],input[type=number],input[type=date]{font-family:"DM Mono",monospace}
-input:focus,select:focus{outline:2px solid var(--ai);outline-offset:1px;border-color:var(--ai)}
-.field{margin-bottom:16px}
-.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.btn{
-  width:100%;padding:14px;border:none;border-radius:8px;background:var(--ai);color:#fff;
-  font-size:15px;font-weight:700;cursor:pointer;letter-spacing:.03em;
-}
-.btn:hover{background:var(--ai-dark)}
-.btn:disabled{background:#9AA7BC;cursor:default}
-.btn.ghost{background:#fff;color:var(--ai);border:1px solid var(--ai)}
-.btn.ghost:hover{background:var(--ai-tint)}
-.btn.sm{width:auto;padding:9px 16px;font-size:13px}
-.msg{font-size:13px;padding:11px 13px;border-radius:8px;margin-bottom:14px;display:none}
-.msg.ok{display:block;background:#EAF3EC;color:#2C6B3F;border:1px solid #BFDCC7}
-.msg.err{display:block;background:#FBEDEC;color:var(--danger);border:1px solid #EBC8C6}
-.msg.info{display:block;background:var(--ai-tint);color:#96230C;border:1px solid #F6C8BD}
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const provider = new GoogleAuthProvider();
+    const ADMIN_EMAIL = 'korosuke19750223@gmail.com';
 
-/* ---- 署名要素：夜明けの帯 ---- */
-.dawn{margin:6px 0 2px}
-.dawn-bar{
-  position:relative;height:10px;border-radius:999px;
-  background:linear-gradient(90deg,#2B2622 0%,#6E3A2A 40%,#ED3615 80%,#F6C09B 100%);
-}
-.dawn-mark{position:absolute;top:-5px;width:2px;height:20px;background:var(--ink);
-  border-radius:2px;box-shadow:0 0 0 3px rgba(255,255,255,.85);transition:left .35s ease}
-.dawn-scale{display:flex;justify-content:space-between;font-size:11px;color:var(--gray);margin-top:6px}
+    // 集計期間ボックスを表示しない月
+    const NO_COLLECTION_MONTHS = ['09'];
 
-/* ---- 表 ---- */
-.tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
-table{width:100%;border-collapse:collapse;font-size:13.5px;white-space:nowrap}
-th,td{padding:9px 11px;text-align:left;border-bottom:1px solid var(--line)}
-th{font-size:12px;font-weight:700;color:var(--gray);background:#F6F2EF;
-  position:sticky;top:0;letter-spacing:.03em}
-td.n,th.n{text-align:right;font-family:"DM Mono",monospace;font-variant-numeric:tabular-nums}
-tbody tr:hover{background:#FCF9F7}
+    let currentUser = null;
+    let allRecords = [];
+    let allAdminData = null;
+    let currentHistoryMonth = null;
+    let currentAdminMonth = null;
 
-/* ---- ランキング ---- */
-.ranks{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
-.rank h3{font-size:14px;margin-bottom:2px}
-.rank .cap{font-size:11.5px;color:var(--gray);margin-bottom:10px}
-.rank ol{list-style:none;margin:0;padding:0;counter-reset:r}
-.rank li{display:flex;align-items:baseline;gap:10px;padding:7px 0;border-bottom:1px solid #F0EAE6;font-size:13.5px}
-.rank li .pos{counter-increment:r;font-family:"DM Mono",monospace;font-size:12px;color:var(--gray);width:22px;flex:none}
-.rank li:nth-child(-n+3) .pos{color:var(--akebono);font-weight:500}
-.rank li .nm{flex:1;overflow:hidden;text-overflow:ellipsis}
-.rank li .ch{font-size:11px;color:var(--gray);flex:none}
-.rank li .v{font-family:"DM Mono",monospace;font-weight:500;flex:none}
-.empty{font-size:13px;color:var(--gray);padding:14px 0}
-.mini{border:1px solid var(--line);background:#fff;color:var(--gray);border-radius:6px;
-  padding:4px 9px;font-size:12px;cursor:pointer;margin-right:5px}
-.mini:hover{background:#F6F2EF;color:var(--ink)}
-.mini.del{border-color:#E9C4C1;color:var(--danger)}
-.mini.del:hover{background:#FBEDEC}
-.warnbox{background:#FFF8F1;border:1px solid #F0D9BF;border-radius:8px;padding:11px 13px;
-  font-size:12.5px;color:#8A5A22;margin-bottom:14px}
+    // ============================================================
+    // ユーティリティ
+    // ============================================================
+    function isCrownTime(t) {
+      if (!t) return false;
+      const [h, m] = t.split(':').map(Number);
+      return h < 3 || (h === 3 && m === 0);
+    }
+    function timeToMinutes(t) {
+      if (!t) return null;
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + m;
+    }
+    function minutesToTime(m) {
+      const h = Math.floor(m / 60) % 24;
+      const mm = Math.round(m % 60);
+      return String(h).padStart(2,'0') + ':' + String(mm).padStart(2,'0');
+    }
+    function getYearMonth(d) { return d ? d.slice(0, 7) : ''; }
+    function formatTime(t) {
+      if (!t) return '';
+      const parts = String(t).split(':');
+      if (parts.length < 2) return t;
+      const h = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10);
+      if (isNaN(h) || isNaN(m)) return t;
+      return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+    }
+    function formatDate(d) {
+      const p = d.split('-');
+      return p.length === 3 ? p[0]+'/'+p[1]+'/'+p[2] : d;
+    }
+    function monthLabel(ym) {
+      const [y, m] = ym.split('-');
+      return y + '年' + parseInt(m) + '月';
+    }
+    function buildStreakMap(records) {
+      const seen = new Set();
+      const deduped = [];
+      [...records].sort((a,b) => a.date.localeCompare(b.date)).forEach(r => {
+        if (!seen.has(r.date)) { seen.add(r.date); deduped.push(r); }
+      });
+      const map = {};
+      let streak = 0;
+      deduped.forEach((r, i) => {
+        if (!isCrownTime(r.prayTime)) { streak = 0; }
+        else if (i === 0) { streak = 1; }
+        else {
+          const diff = (new Date(r.date) - new Date(deduped[i-1].date)) / 86400000;
+          streak = (diff === 1 && isCrownTime(deduped[i-1].prayTime)) ? streak + 1 : 1;
+        }
+        map[r.date] = streak;
+      });
+      return map;
+    }
+    function buildMonthList(records) {
+      const months = [...new Set(records.map(r => getYearMonth(r.date)))].filter(Boolean);
+      months.sort((a, b) => b.localeCompare(a));
+      return months;
+    }
 
-/* ---- タブ ---- */
-.tabs{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap}
-.tab{padding:9px 16px;border-radius:999px;border:1px solid var(--line);background:#fff;
-  font-size:13.5px;cursor:pointer;color:var(--gray)}
-.tab[aria-selected=true]{background:var(--ai);color:#fff;border-color:var(--ai)}
+    function showScreen(id) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+    }
+    function showMsg(id, text, type) {
+      const el = document.getElementById(id);
+      el.textContent = text;
+      el.className = 'msg show msg-' + type;
+      if (type === 'success') setTimeout(() => el.classList.remove('show'), 3000);
+    }
+    function hideMsg(id) {
+      const el = document.getElementById(id);
+      if (el) el.classList.remove('show');
+    }
+    function showConfirmModal(message) {
+      return new Promise(resolve => {
+        document.getElementById('modal-message').textContent = message;
+        document.getElementById('confirm-modal').style.display = 'flex';
+        document.getElementById('modal-ok').onclick = () => {
+          document.getElementById('confirm-modal').style.display = 'none';
+          resolve(true);
+        };
+        document.getElementById('modal-cancel').onclick = () => {
+          document.getElementById('confirm-modal').style.display = 'none';
+          resolve(false);
+        };
+      });
+    }
 
-/* ---- ログイン ---- */
-.login{min-height:100svh;display:grid;place-items:center;background:
-  radial-gradient(120% 80% at 50% 0%, #FDF0EC 0%, transparent 58%), var(--hakuji);
-  padding:24px}
-.login .box{max-width:380px;width:100%;text-align:center;color:var(--ink)}
-.login .mark{width:104px;height:104px;margin:0 auto 18px;display:block}
-.login h1{font-size:25px;color:var(--ink);margin-bottom:6px}
-.login p{font-size:13.5px;color:var(--gray);margin:0 0 26px}
-.gbtn{display:inline-flex;align-items:center;gap:10px;background:#fff;color:var(--ink);
-  border:1px solid var(--line);border-radius:8px;padding:13px 22px;font-size:15px;
-  font-weight:700;cursor:pointer;box-shadow:var(--shadow)}
-.gbtn:hover{border-color:#F0BDB0}
-.hidden{display:none !important}
-.foot{font-size:11.5px;color:var(--gray);text-align:center;margin-top:22px}
-@media (prefers-reduced-motion:reduce){*{transition:none !important}}
-@media (max-width:520px){ .row{grid-template-columns:1fr} .wrap{padding:16px 12px 64px} }
-</style>
+    // ============================================================
+    // 認証
+    // ============================================================
+    onAuthStateChanged(auth, async user => {
+      if (user) {
+        const memberDoc = await getDoc(doc(db, 'members', user.email));
+        currentUser = { uid: user.uid, email: user.email };
+        if (memberDoc.exists()) {
+          const data = memberDoc.data();
+          currentUser.name = data.name;
+          currentUser.church = data.church;
+          enterMain();
+        } else {
+          showScreen('screen-register');
+        }
+      } else {
+        currentUser = null;
+        showScreen('screen-login');
+      }
+    });
+
+    window.doGoogleLogin = async function() {
+      const btn = document.getElementById('login-btn');
+      btn.innerHTML = '<span class="spinner"></span> ログイン中...';
+      btn.disabled = true;
+      try {
+        await signInWithPopup(auth, provider);
+      } catch(e) {
+        showMsg('login-error', 'ログインに失敗しました', 'error');
+        btn.innerHTML = 'Googleでログイン';
+        btn.disabled = false;
+      }
+    };
+
+    window.doRegister = async function() {
+      const name = document.getElementById('reg-name').value.trim();
+      const church = document.getElementById('reg-church').value.trim();
+      hideMsg('reg-error'); hideMsg('reg-success');
+      if (!name || !church) { showMsg('reg-error', '全項目を入力してください', 'error'); return; }
+      try {
+        await setDoc(doc(db, 'members', currentUser.email), {
+          email: currentUser.email, name, church,
+          createdAt: new Date().toISOString()
+        });
+        currentUser.name = name; currentUser.church = church;
+        showMsg('reg-success', '登録しました！', 'success');
+        setTimeout(() => enterMain(), 800);
+      } catch(e) { showMsg('reg-error', 'エラーが発生しました', 'error'); }
+    };
+
+    window.doLogout = async function() {
+      await signOut(auth);
+      allRecords = []; allAdminData = null;
+    };
+
+    function enterMain() {
+      showScreen('screen-main');
+      document.getElementById('main-name').textContent = currentUser.name;
+      document.getElementById('main-church').textContent = currentUser.church;
+      document.getElementById('user-avatar').textContent = currentUser.name.charAt(0);
+      const isAdmin = currentUser.email === ADMIN_EMAIL;
+      document.getElementById('admin-badge').style.display = isAdmin ? '' : 'none';
+      document.getElementById('admin-tab-btn').style.display = isAdmin ? '' : 'none';
+      const today = new Date().toLocaleDateString('sv-SE');
+      document.getElementById('input-date').value = today;
+      allRecords = []; allAdminData = null;
+      showTab('input');
+      prefetchRecords();
+    }
+
+    async function prefetchRecords() {
+      try {
+        const snap = await getDocs(query(collection(db, 'records'), where('email', '==', currentUser.email)));
+        allRecords = snap.docs.map(d => d.data()).sort((a,b) => a.date.localeCompare(b.date));
+      } catch(e) { console.error('prefetch失敗:', e.code, e.message); }
+    }
+
+    // ============================================================
+    // タブ
+    // ============================================================
+    window.showTab = function(tab) {
+      ['input','history','admin'].forEach(t => {
+        document.getElementById('tab-'+t).classList.toggle('active', t === tab);
+      });
+      document.querySelectorAll('.tab').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('onclick') === `showTab('${tab}')`);
+      });
+      if (tab === 'history') loadHistory();
+      if (tab === 'admin') loadAdmin();
+    };
+
+    // ============================================================
+    // 入力
+    // ============================================================
+    window.doSave = async function() {
+      const date = document.getElementById('input-date').value;
+      const time = document.getElementById('input-time').value;
+      hideMsg('input-error'); hideMsg('input-success');
+      if (!date || !time) { showMsg('input-error', '日付と時間を入力してください', 'error'); return; }
+
+      const existing = allRecords.find(r => r.date === date);
+      if (existing) {
+        const confirmed = await showConfirmModal(
+          `${date} はすでに ${existing.prayTime} で登録されています。\n上書きしますか？`
+        );
+        if (!confirmed) return;
+      }
+
+      const btn = document.querySelector('#tab-input .btn-primary');
+      btn.innerHTML = '<span class="spinner"></span> 保存中...';
+      btn.disabled = true;
+
+      try {
+        const recordId = `${currentUser.email}_${date}`;
+        await setDoc(doc(db, 'records', recordId), {
+          email: currentUser.email,
+          date, prayTime: time,
+          recordedAt: new Date().toISOString()
+        });
+        showMsg('input-success', existing ? '上書き保存しました！' : '記録しました！', 'success');
+        const idx = allRecords.findIndex(r => r.date === date);
+        if (idx >= 0) { allRecords[idx].prayTime = time; }
+        else { allRecords.push({ date, prayTime: time, email: currentUser.email }); }
+        allAdminData = null;
+      } catch(e) {
+        showMsg('input-error', 'エラーが発生しました', 'error');
+      } finally {
+        btn.innerHTML = '保存する';
+        btn.disabled = false;
+      }
+    };
+
+    // ============================================================
+    // 履歴
+    // ============================================================
+    async function loadHistory() {
+      if (!allRecords.length) {
+        document.getElementById('history-loading').style.display = 'flex';
+        document.getElementById('history-content').innerHTML = '';
+        try {
+          const snap = await getDocs(query(collection(db, 'records'), where('email', '==', currentUser.email)));
+          allRecords = snap.docs.map(d => d.data()).sort((a,b) => a.date.localeCompare(b.date));
+        } catch(e) {
+          console.error('履歴読み込み失敗:', e.code, e.message, e);
+          document.getElementById('history-loading').style.display = 'none';
+          document.getElementById('history-content').innerHTML =
+            '<p style="color:var(--danger);font-size:13px;">読み込みに失敗しました<br>' +
+            '<span style="font-size:11px;color:#666;">' + (e.code || '') + ' / ' + (e.message || '') + '</span></p>';
+          return;
+        }
+        document.getElementById('history-loading').style.display = 'none';
+      }
+
+      const months = buildMonthList(allRecords);
+      const today = new Date().toLocaleDateString('sv-SE');
+      const currentYM = today.slice(0, 7);
+      if (!currentHistoryMonth || !months.includes(currentHistoryMonth)) {
+        currentHistoryMonth = months.includes(currentYM) ? currentYM : (months[0] || currentYM);
+      }
+
+      const btnContainer = document.getElementById('history-month-btns');
+      btnContainer.innerHTML = '';
+      months.forEach(ym => {
+        const btn = document.createElement('button');
+        btn.className = 'btn-month' + (ym === currentHistoryMonth ? ' active' : '');
+        btn.textContent = monthLabel(ym);
+        btn.onclick = () => { currentHistoryMonth = ym; renderHistory(); };
+        btnContainer.appendChild(btn);
+      });
+      renderHistory();
+    }
+
+    function renderHistory() {
+      document.querySelectorAll('#history-month-btns .btn-month').forEach(btn => {
+        btn.classList.toggle('active', btn.textContent === monthLabel(currentHistoryMonth));
+      });
+
+      const filtered = allRecords.filter(r => getYearMonth(r.date) === currentHistoryMonth);
+      const streakMap = buildStreakMap(allRecords);
+      const todayYM = new Date().toLocaleDateString('sv-SE').slice(0, 7);
+      const isCurrentMonth = currentHistoryMonth === todayYM;
+      const currentMonthNum = currentHistoryMonth.split('-')[1];
+      const showCollectionBox = !NO_COLLECTION_MONTHS.includes(currentMonthNum);
+
+      const collectionDays = filtered.filter(r => parseInt(r.date.split('-')[2]) <= 7);
+      const collectionAchieve = collectionDays.filter(r => isCrownTime(r.prayTime)).length;
+      const collectionTotal = collectionDays.length;
+
+      const collectionSorted = [...collectionDays].sort((a,b) => a.date.localeCompare(b.date));
+      let colStreakNow = 0;
+      for (let i = collectionSorted.length - 1; i >= 0; i--) {
+        if (!isCrownTime(collectionSorted[i].prayTime)) break;
+        if (i < collectionSorted.length - 1) {
+          const diff = (new Date(collectionSorted[i+1].date) - new Date(collectionSorted[i].date)) / 86400000;
+          if (diff !== 1) break;
+        }
+        colStreakNow++;
+      }
+
+      const avgBox = document.getElementById('history-avg');
+      avgBox.style.display = '';
+      const calcAvg = arr => {
+        if (!arr.length) return '－';
+        return minutesToTime(arr.reduce((a,r) => a + timeToMinutes(r.prayTime), 0) / arr.length);
+      };
+      const firstWeek = filtered.filter(r => parseInt(r.date.split('-')[2]) <= 7 && r.prayTime);
+      const allMonth = filtered.filter(r => r.prayTime);
+
+      if (isCurrentMonth) {
+        let boxHtml = '';
+        if (collectionDays.length > 0 && showCollectionBox) {
+          const streakText = colStreakNow >= 2
+            ? `<span style="color:var(--warning);font-weight:700;">${colStreakNow}日連続達成中 🔥</span>`
+            : colStreakNow === 1 ? `<span style="color:var(--warning);">1日達成中</span>`
+            : `<span style="color:var(--text-hint);">－</span>`;
+          boxHtml += `<div style="background:var(--warning-light);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:10px;">
+            <div style="font-size:13px;font-weight:700;color:var(--warning);margin-bottom:6px;">📋 ${parseInt(currentHistoryMonth.split('-')[1])}月 集計期間（1〜7日）</div>
+            <div style="display:flex;gap:1.5rem;flex-wrap:wrap;font-size:13px;margin-bottom:8px;">
+              <div><span style="color:var(--text-muted);">連続達成</span><br>${streakText}</div>
+              <div><span style="color:var(--text-muted);">${collectionTotal}日中</span><br>
+                <span style="font-weight:700;color:var(--warning);">${collectionAchieve}日達成 👑</span></div>
+            </div>
+            <div id="total-streak-box" style="display:none;padding-top:6px;border-top:1px solid rgba(180,83,9,0.2);"></div>
+          </div>`;
+        }
+        boxHtml += `<div class="avg-title">📊 ${monthLabel(currentHistoryMonth)}の平均お祈り開始時間</div>
+          <div class="avg-row">
+            <div class="avg-item"><span class="avg-label">1〜7日の平均</span><span class="avg-val">${calcAvg(firstWeek)}</span></div>
+            <div class="avg-item"><span class="avg-label">当月全体の平均</span><span class="avg-val">${calcAvg(allMonth)}</span></div>
+          </div>`;
+        avgBox.innerHTML = boxHtml;
+
+        // 通算連続表示
+        const latestRecord = [...allRecords].filter(r => r.prayTime).sort((a,b) => b.date.localeCompare(a.date))[0];
+        const currentTotalStreak = latestRecord ? (streakMap[latestRecord.date] || 0) : 0;
+        const totalBox = document.getElementById('total-streak-box');
+        if (totalBox && currentTotalStreak >= 1) {
+          totalBox.style.display = '';
+          totalBox.innerHTML = currentTotalStreak % 7 === 0
+            ? `<span class="streak-badge">通算 ${currentTotalStreak}日連続達成中！🎉</span>`
+            : `<span class="streak-sm" style="font-size:13px;">通算 ${currentTotalStreak}日連続達成中</span>`;
+        }
+      } else {
+        const achieveDays = filtered.filter(r => isCrownTime(r.prayTime)).length;
+        avgBox.innerHTML = `<div class="avg-title">📊 ${monthLabel(currentHistoryMonth)}の記録</div>
+          <div class="avg-row">
+            <div class="avg-item"><span class="avg-label">達成日数</span><span class="avg-val" style="color:var(--warning);">${achieveDays}日 👑</span></div>
+            <div class="avg-item"><span class="avg-label">1〜7日の平均</span><span class="avg-val">${calcAvg(firstWeek)}</span></div>
+            <div class="avg-item"><span class="avg-label">当月全体の平均</span><span class="avg-val">${calcAvg(allMonth)}</span></div>
+          </div>`;
+      }
+
+      const content = document.getElementById('history-content');
+      if (!filtered.length) {
+        avgBox.style.display = 'none';
+        content.innerHTML = '<div class="empty-state">この月の記録がありません</div>';
+        return;
+      }
+
+      const buildColStreakMap = records => {
+        const map = {};
+        const colOnly = records.filter(r => parseInt(r.date.split('-')[2]) <= 7).sort((a,b) => a.date.localeCompare(b.date));
+        const seen = new Set(); const deduped = [];
+        colOnly.forEach(r => { if (!seen.has(r.date)) { seen.add(r.date); deduped.push(r); } });
+        let s = 0;
+        deduped.forEach((r,i) => {
+          if (!isCrownTime(r.prayTime)) { s = 0; }
+          else if (i === 0) { s = 1; }
+          else {
+            const diff = (new Date(r.date) - new Date(deduped[i-1].date)) / 86400000;
+            s = (diff === 1 && isCrownTime(deduped[i-1].prayTime)) ? s + 1 : 1;
+          }
+          map[r.date] = s;
+        });
+        return map;
+      };
+      const colStreakMap = buildColStreakMap(allRecords.filter(r => getYearMonth(r.date) === currentHistoryMonth));
+
+      const sorted = [...filtered].sort((a,b) => b.date.localeCompare(a.date));
+      let html = '<table><thead><tr><th>日付</th><th>お祈り開始時間</th></tr></thead><tbody>';
+      sorted.forEach(r => {
+        const timeVal = r.prayTime || '';
+        const day = parseInt(r.date.split('-')[2]);
+        const inCollection = day >= 1 && day <= 7;
+        const totalS = streakMap[r.date] || 0;
+        const colS = colStreakMap[r.date] || 0;
+
+        const crown = (() => {
+          if (!isCrownTime(timeVal)) return '';
+          if (totalS % 7 === 0 && totalS > 0) return `<span class="crown-lg">👑</span>`;
+          return `<span class="crown-sm">👑</span>`;
+        })();
+
+        const streakLabel = (() => {
+          if (!isCrownTime(timeVal)) return '';
+          if (inCollection && showCollectionBox && colS >= 1) {
+            if (colS % 7 === 0) return `<span class="streak-badge">集計期間${colS}日連続！🎉</span>`;
+            if (colS >= 2) return `<span class="streak-sm">集計期間${colS}日連続</span>`;
+            return `<span class="streak-sm">集計期間1日目</span>`;
+          }
+          if (totalS % 7 === 0 && totalS > 0) return `<span class="streak-badge">連続${totalS}日達成中！🎉</span>`;
+          if (totalS >= 2) return `<span class="streak-sm">連続${totalS}日達成中</span>`;
+          if (totalS === 1) return `<span class="streak-sm">連続1日達成中</span>`;
+          return '';
+        })();
+
+        html += `<tr><td>${formatDate(r.date)}</td><td><span class="time-chip">${formatTime(timeVal)}</span> ${crown}${streakLabel}</td></tr>`;
+      });
+      html += '</tbody></table>';
+      content.innerHTML = html;
+    }
+
+    // ============================================================
+    // 全員タブ（管理者）
+    // ============================================================
+    async function loadAdmin() {
+      if (!allAdminData) {
+        document.getElementById('admin-loading').style.display = 'flex';
+        document.getElementById('admin-content').innerHTML = '';
+        try {
+          const [membersSnap, recordsSnap] = await Promise.all([
+            getDocs(collection(db, 'members')),
+            getDocs(collection(db, 'records'))
+          ]);
+          const members = {};
+          membersSnap.docs.forEach(d => {
+            const data = d.data();
+            if (data.email && data.name) {
+              members[data.email] = { name: data.name, church: data.church || '' };
+            }
+          });
+          const records = {};
+          const dates = new Set();
+          recordsSnap.docs.forEach(d => {
+            const data = d.data();
+            const email = data.email;
+            const date = data.date;
+            const prayTime = data.prayTime;
+            if (!email || !date || !prayTime) return;
+            if (!records[email]) records[email] = {};
+            records[email][date] = prayTime;
+            dates.add(date);
+          });
+          allAdminData = { members, records, dates: [...dates].sort() };
+        } catch(e) {
+          document.getElementById('admin-loading').style.display = 'none';
+          document.getElementById('admin-content').innerHTML = '<p style="color:var(--danger);font-size:13px;">読み込みに失敗しました</p>';
+          return;
+        }
+        document.getElementById('admin-loading').style.display = 'none';
+      }
+
+      const months = [...new Set(allAdminData.dates.map(d => getYearMonth(d)))].filter(Boolean).sort((a,b) => b.localeCompare(a));
+      const todayYM = new Date().toLocaleDateString('sv-SE').slice(0, 7);
+      if (!currentAdminMonth || !months.includes(currentAdminMonth)) {
+        currentAdminMonth = months.includes(todayYM) ? todayYM : (months[0] || todayYM);
+      }
+
+      const btnContainer = document.getElementById('admin-month-btns');
+      btnContainer.innerHTML = '';
+      months.forEach(ym => {
+        const btn = document.createElement('button');
+        btn.className = 'btn-month' + (ym === currentAdminMonth ? ' active' : '');
+        btn.textContent = monthLabel(ym);
+        btn.onclick = () => { currentAdminMonth = ym; renderAdmin(); };
+        btnContainer.appendChild(btn);
+      });
+      renderAdmin();
+    }
+
+    function renderAdmin() {
+      document.querySelectorAll('#admin-month-btns .btn-month').forEach(btn => {
+        btn.classList.toggle('active', btn.textContent === monthLabel(currentAdminMonth));
+      });
+
+      const monthDates = allAdminData.dates.filter(d => getYearMonth(d) === currentAdminMonth).sort();
+      const content = document.getElementById('admin-content');
+      if (!monthDates.length) { content.innerHTML = '<div class="empty-state">この月の記録がありません</div>'; return; }
+
+      const [adminY, adminM] = currentAdminMonth.split('-');
+      const firstWeekDates = monthDates.filter(d => parseInt(d.split('-')[2]) <= 7);
+
+      let summaryHtml = '';
+      if (firstWeekDates.length > 0) {
+        const rowsWithAvg = Object.entries(allAdminData.members).map(([email, info]) => {
+          const times = firstWeekDates.map(d => (allAdminData.records[email] || {})[d]).filter(t => t);
+          const mins = times.map(t => timeToMinutes(t)).filter(v => v !== null);
+          const avg = mins.length ? minutesToTime(mins.reduce((a,b) => a+b,0) / mins.length) : null;
+          const crownDays = times.filter(t => isCrownTime(t)).length;
+          return { name: info.name, church: info.church, avg, count: times.length, crownDays };
+        });
+        rowsWithAvg.sort((a,b) => {
+          if (!a.avg && !b.avg) return 0;
+          if (!a.avg) return 1; if (!b.avg) return -1;
+          return a.avg.localeCompare(b.avg);
+        });
+
+        summaryHtml = `<div style="margin-bottom:1rem;">
+          <div style="font-size:13px;font-weight:700;color:var(--text-muted);margin-bottom:8px;">📊 ${adminY}年${parseInt(adminM)}月 1〜7日 平均お祈り開始時間</div>
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead><tr>
+            <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);">名前</th>
+            <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);">教会</th>
+            <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);">平均時間</th>
+            <th style="text-align:center;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);">入力日数</th>
+            <th style="text-align:center;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);">👑達成日数</th>
+          </tr></thead><tbody>`;
+        rowsWithAvg.forEach(row => {
+          const avgChip = row.avg
+            ? `<span class="time-chip">${formatTime(row.avg)}</span>${isCrownTime(row.avg) ? ' 👑' : ''}`
+            : '<span class="dash">－</span>';
+          const crownCell = row.crownDays > 0
+            ? `<span style="font-weight:700;color:var(--warning);">${row.crownDays}日 👑</span>`
+            : `<span style="color:var(--text-hint);">0日</span>`;
+          summaryHtml += `<tr>
+            <td style="padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap;">${row.name}</td>
+            <td style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);white-space:nowrap;">${row.church}</td>
+            <td style="padding:6px 8px;border-bottom:1px solid var(--border);">${avgChip}</td>
+            <td style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);text-align:center;">${row.count}日</td>
+            <td style="padding:6px 8px;border-bottom:1px solid var(--border);text-align:center;">${crownCell}</td>
+          </tr>`;
+        });
+        summaryHtml += '</tbody></table></div>';
+      }
+
+      let html = '<table class="admin-table"><thead><tr><th>名前</th><th>教会</th>';
+      monthDates.forEach(d => { html += `<th>${parseInt(d.split('-')[2])}日</th>`; });
+      html += '</tr></thead><tbody>';
+
+      Object.entries(allAdminData.members).forEach(([email, info]) => {
+        const allPersonRecords = allAdminData.dates.map(d => ({ date: d, prayTime: (allAdminData.records[email] || {})[d] || '' }));
+        const streakMap = buildStreakMap(allPersonRecords);
+        html += `<tr><td style="white-space:nowrap;">${info.name}</td><td style="white-space:nowrap;color:var(--text-muted);">${info.church}</td>`;
+        monthDates.forEach(d => {
+          const t = (allAdminData.records[email] || {})[d] || '';
+          if (!t) { html += `<td><span class="dash">-</span></td>`; }
+          else {
+            const s = streakMap[d] || 0;
+            const crown = isCrownTime(t) ? (s % 7 === 0 && s > 0 ? '👑' : '<span style="font-size:12px;">👑</span>') : '';
+            html += `<td><span class="time-chip" style="font-size:11px;">${formatTime(t)}</span>${crown}</td>`;
+          }
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      content.innerHTML = summaryHtml + html;
+    }
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f5f4f0; --surface: #ffffff; --border: rgba(0,0,0,0.1);
+      --border-strong: rgba(0,0,0,0.2); --text: #1a1a1a; --text-muted: #666;
+      --text-hint: #999; --accent: #2563eb; --accent-light: #eff6ff;
+      --success: #16a34a; --success-light: #f0fdf4; --danger: #dc2626;
+      --danger-light: #fef2f2; --warning-light: #fffbeb; --warning: #b45309;
+      --radius: 10px; --radius-sm: 6px;
+    }
+    body { font-family: 'Noto Sans JP', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; padding: 1.5rem 1rem; }
+    .container { max-width: 600px; margin: 0 auto; }
+    .app-header { display: flex; align-items: center; gap: 10px; margin-bottom: 1.5rem; }
+    .app-header .icon { width: 40px; height: 40px; background: var(--accent); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-size: 20px; }
+    .app-header h1 { font-size: 18px; font-weight: 700; }
+    .app-header p { font-size: 12px; color: var(--text-muted); }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem; }
+    .card h2 { font-size: 15px; font-weight: 700; margin-bottom: 1rem; }
+    label { display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 4px; }
+    input[type="text"], input[type="date"], input[type="time"] {
+      width: 100%; padding: 10px 12px; border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm); font-size: 15px; font-family: inherit;
+      background: var(--surface); color: var(--text); margin-bottom: 12px;
+      transition: border-color 0.15s; -webkit-appearance: none;
+    }
+    input:focus { outline: none; border-color: var(--accent); }
+    button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 16px; border: none; border-radius: var(--radius-sm); font-size: 14px; font-family: inherit; font-weight: 500; cursor: pointer; transition: opacity 0.15s, transform 0.1s; }
+    button:active { transform: scale(0.98); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary { background: var(--accent); color: #fff; width: 100%; }
+    .btn-primary:hover:not(:disabled) { opacity: 0.9; }
+    .btn-google { background: #fff; color: #333; border: 1px solid var(--border-strong); width: 100%; font-size: 15px; gap: 10px; padding: 12px 16px; }
+    .btn-google:hover { background: #f8f8f8; }
+    .btn-ghost { background: transparent; color: var(--text-muted); border: 1px solid var(--border-strong); font-size: 13px; padding: 6px 12px; }
+    .btn-month { background: var(--bg); color: var(--text-muted); border: 1px solid var(--border); font-size: 12px; padding: 5px 10px; border-radius: 20px; cursor: pointer; }
+    .btn-month.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .msg { font-size: 13px; padding: 8px 12px; border-radius: var(--radius-sm); margin-top: 8px; display: none; }
+    .msg.show { display: block; }
+    .msg-error { background: var(--danger-light); color: var(--danger); }
+    .msg-success { background: var(--success-light); color: var(--success); }
+    .user-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .user-avatar { width: 36px; height: 36px; background: var(--accent-light); color: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; }
+    .user-info { flex: 1; }
+    .user-name { font-size: 14px; font-weight: 500; }
+    .user-church { font-size: 12px; color: var(--text-muted); }
+    .badge { font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 500; }
+    .badge-admin { background: var(--warning-light); color: var(--warning); }
+    .tabs { display: flex; gap: 4px; background: var(--bg); border-radius: var(--radius-sm); padding: 3px; margin-bottom: 1rem; }
+    .tab { flex: 1; padding: 8px 4px; border-radius: calc(var(--radius-sm) - 2px); font-size: 13px; font-weight: 500; background: transparent; color: var(--text-muted); border: none; cursor: pointer; transition: all 0.15s; }
+    .tab.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .screen { display: none; }
+    .screen.active { display: block; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; padding: 8px 10px; color: var(--text-muted); border-bottom: 1px solid var(--border); font-weight: 500; white-space: nowrap; }
+    td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    .time-chip { display: inline-block; background: var(--accent-light); color: var(--accent); font-size: 13px; font-weight: 500; padding: 2px 8px; border-radius: 20px; }
+    .dash { color: var(--text-hint); }
+    .spinner { width: 16px; height: 16px; border: 2px solid var(--border-strong); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-row { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 14px; padding: 1rem 0; }
+    .empty-state { text-align: center; color: var(--text-hint); padding: 2rem 0; font-size: 14px; }
+    .overflow-wrap { overflow-x: auto; }
+    .admin-table th, .admin-table td { text-align: center; padding: 6px 8px; }
+    .admin-table th:first-child, .admin-table td:first-child,
+    .admin-table th:nth-child(2), .admin-table td:nth-child(2) { text-align: left; }
+    .month-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 1rem; }
+    .avg-box { background: var(--accent-light); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 1rem; font-size: 13px; }
+    .avg-title { color: var(--text-muted); margin-bottom: 6px; font-weight: 500; }
+    .avg-row { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+    .avg-item { display: flex; flex-direction: column; }
+    .avg-label { font-size: 11px; color: var(--text-muted); }
+    .avg-val { font-size: 16px; font-weight: 700; color: var(--accent); }
+    .crown-sm { font-size: 15px; vertical-align: middle; }
+    .crown-lg { font-size: 24px; vertical-align: middle; }
+    .streak-badge { font-size: 11px; font-weight: 700; color: var(--warning); margin-left: 2px; }
+    .streak-sm { font-size: 11px; color: var(--text-muted); margin-left: 2px; }
+    .google-icon { width: 20px; height: 20px; }
+  </style>
 </head>
 <body>
-
-<!-- ============ ログイン ============ -->
-<section id="loginView" class="login hidden">
-  <div class="box">
-    <img class="mark" src="data:image/png;base64,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" alt="">
-    <h1>CP21日条件アプリ</h1>
-    <p>明け方お祈り開始時間・聖書の章数・声かけ人数を、毎日ひとつずつ。</p>
-    <button class="gbtn" id="googleBtn">
-      <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M45 24c0-1.6-.1-2.7-.4-3.9H24v7.1h12c-.2 1.9-1.5 4.7-4.3 6.6l6.6 5.1C42.2 35.2 45 30.1 45 24z"/><path fill="#34A853" d="M24 46c5.7 0 10.5-1.9 14-5.1l-6.6-5.1c-1.8 1.2-4.2 2.1-7.4 2.1-5.6 0-10.4-3.7-12.1-8.8l-6.9 5.3C8.4 41.1 15.6 46 24 46z"/><path fill="#FBBC05" d="M11.9 29.1c-.4-1.3-.7-2.7-.7-4.1s.3-2.8.7-4.1l-6.9-5.4C3.5 18.3 2.7 21.1 2.7 25s.8 6.7 2.3 9.5l6.9-5.4z"/><path fill="#EA4335" d="M24 11.5c3.9 0 6.6 1.7 8.1 3.1l5.9-5.7C34.5 5.6 29.7 3.7 24 3.7 15.6 3.7 8.4 8.6 5 15.5l6.9 5.4c1.7-5.1 6.5-9.4 12.1-9.4z"/></svg>
-      Googleでログイン
-    </button>
+<div class="container">
+  <div class="app-header">
+    <div class="icon">🌅</div>
+    <div><h1>お祈り開始時間トラッカー</h1><p>CGMチーム</p></div>
   </div>
-</section>
 
-<!-- ============ アプリ ============ -->
-<div id="appView" class="hidden">
-  <header class="topbar">
-    <div class="brand">
-      <img src="data:image/png;base64,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" alt="">
-      <div style="min-width:0">
-        <h1 id="viewTitle">CP 21日条件記録</h1>
-        <div class="who" id="whoami"></div>
+  <!-- ログイン画面 -->
+  <div id="screen-login" class="screen active">
+    <div class="card">
+      <h2>ログイン</h2>
+      <p style="font-size:14px;color:var(--text-muted);margin-bottom:1rem;">Googleアカウントでログインしてください</p>
+      <button class="btn-google" id="login-btn" onclick="doGoogleLogin()">
+        <svg class="google-icon" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.36-8.16 2.36-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        Googleでログイン
+      </button>
+      <div class="msg msg-error" id="login-error"></div>
+    </div>
+  </div>
+
+  <!-- 初回登録画面 -->
+  <div id="screen-register" class="screen">
+    <div class="card">
+      <h2>初回登録</h2>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:1rem;">お名前と教会名を登録してください</p>
+      <label>お名前</label>
+      <input type="text" id="reg-name" placeholder="山田太郎" />
+      <label>教会名</label>
+      <input type="text" id="reg-church" placeholder="○○教会" />
+      <button class="btn-primary" onclick="doRegister()">登録する</button>
+      <div class="msg msg-error" id="reg-error"></div>
+      <div class="msg msg-success" id="reg-success"></div>
+    </div>
+  </div>
+
+  <!-- メイン画面 -->
+  <div id="screen-main" class="screen">
+    <div class="card" style="padding:0.75rem 1rem;margin-bottom:0.75rem;">
+      <div class="user-bar">
+        <div class="user-avatar" id="user-avatar">-</div>
+        <div class="user-info">
+          <div class="user-name" id="main-name">-</div>
+          <div class="user-church" id="main-church">-</div>
+        </div>
+        <span class="badge badge-admin" id="admin-badge" style="display:none;">管理者</span>
+        <button class="btn-ghost" onclick="doLogout()">ログアウト</button>
       </div>
     </div>
-    <div style="display:flex;gap:8px">
-      <button class="linkbtn hidden" id="toAdmin">集計・管理</button>
-      <button class="linkbtn hidden" id="toRecord">記録に戻る</button>
-      <button class="linkbtn" id="logoutBtn">ログアウト</button>
+
+    <div class="tabs">
+      <button class="tab active" onclick="showTab('input')">📝 入力</button>
+      <button class="tab" onclick="showTab('history')">📅 履歴</button>
+      <button class="tab" id="admin-tab-btn" style="display:none;" onclick="showTab('admin')">👥 全員</button>
     </div>
-  </header>
 
-  <main class="wrap">
-
-    <!-- ---- 初回登録 ---- -->
-    <section id="regView" class="hidden">
+    <!-- 入力タブ -->
+    <div id="tab-input" class="tab-content active">
       <div class="card">
-        <h2 class="withico"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="2.8" y="4.8" width="18.4" height="14.4" rx="2.6"/><circle cx="8.6" cy="10.8" r="2"/><path d="M5.5 16.4c.5-1.5 1.7-2.3 3.1-2.3s2.6.8 3.1 2.3"/><path d="M14.8 10.2h3.6M14.8 13.6h3.6"/></svg></span>個人登録</h2>
-        <div class="sub">最初に一度だけ。あとから変更できます。</div>
-        <div class="msg" id="regMsg"></div>
-        <div class="field"><label for="regName"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.4"/><path d="M5 20.2c0-3.6 3.1-5.6 7-5.6s7 2 7 5.6"/></svg></span>名前</label><input id="regName" type="text" autocomplete="name" placeholder="山田 太郎"></div>
-        <div class="row">
-          <div class="field"><label for="regGender"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="9.2" cy="8.2" r="3"/><path d="M3.2 20c0-3.2 2.7-4.9 6-4.9s6 1.7 6 4.9"/><path d="M16.2 5.7a3 3 0 0 1 0 5.4"/><path d="M18 15.5c1.8.7 2.9 2 2.9 4.2"/></svg></span>性別</label>
-            <select id="regGender"><option value="">選択してください</option><option>男性</option><option>女性</option></select></div>
-          <div class="field"><label for="regChurch"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5v3.6M10.3 4.3h3.4"/><path d="M12 6.6 5.6 11.2v9.2h12.8v-9.2z"/><path d="M10.3 20.4v-3.9a1.7 1.7 0 0 1 3.4 0v3.9"/></svg></span>教会</label>
-            <select id="regChurch"><option value="">選択してください</option></select></div>
-        </div>
-        <button class="btn" id="regSave">登録する</button>
+        <h2>お祈り開始時間を記録</h2>
+        <label>日付</label>
+        <input type="date" id="input-date" />
+        <label>お祈り開始時間</label>
+        <input type="time" id="input-time" />
+        <button class="btn-primary" onclick="doSave()">保存する</button>
+        <div class="msg msg-error" id="input-error"></div>
+        <div class="msg msg-success" id="input-success"></div>
       </div>
-    </section>
+    </div>
 
-    <!-- ---- 記録 ---- -->
-    <section id="recordView" class="hidden">
+    <!-- 履歴タブ -->
+    <div id="tab-history" class="tab-content">
       <div class="card">
-        <h2>CP 21日条件記録</h2>
-        <div class="sub" id="periodNote"></div>
-        <div class="msg" id="recMsg"></div>
-
-        <div class="field">
-          <label for="recDate"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="3.4" y="5.2" width="17.2" height="15.4" rx="2.4"/><path d="M3.4 10.2h17.2M8.4 3.4v3.6M15.6 3.4v3.6"/></svg></span>日付</label>
-          <input id="recDate" type="date">
-        </div>
-
-        <div class="field">
-          <label for="recWake"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12.7" r="8"/><path d="M12 8.4v4.3l2.8 1.8"/><path d="M4.4 4.2 7 2.3M19.6 4.2 17 2.3"/></svg></span>明け方お祈り開始時間</label>
-          <input id="recWake" type="time" step="60">
-          <div class="dawn">
-            <div class="dawn-bar"><div class="dawn-mark" id="dawnMark" style="left:-99px"></div></div>
-            <div class="dawn-scale"><span>3:00</span><span>5:00</span><span>7:00</span><span>9:00</span></div>
-          </div>
-        </div>
-
-        <div class="row">
-          <div class="field"><label for="recChap"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 4.2h4.3c1.7 0 3.1 1.1 3.1 2.5v13c0-1.1-1.1-1.9-2.4-1.9H3.5z"/><path d="M20.5 4.2h-4.3c-1.7 0-3.1 1.1-3.1 2.5v13c0-1.1 1.1-1.9 2.4-1.9h5z"/></svg></span>聖書の章数</label><input id="recChap" type="number" min="0" max="200" inputmode="numeric" placeholder="0"></div>
-          <div class="field"><label for="recCall"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="15.8" cy="4.6" r="2.3"/><path d="M14.3 7.9 12.1 12.9"/><path d="M12.1 12.9 15.7 15.3 16.6 20.4"/><path d="M12.1 12.9 8.5 15.5 6.5 19.9"/><path d="M13.7 9.5 17.8 11"/><path d="M13.2 10.9 9.2 11.6"/></svg></span>声かけ人数</label><input id="recCall" type="number" min="0" max="500" inputmode="numeric" placeholder="0"></div>
-        </div>
-
-        <button class="btn" id="recSave">保存する</button>
+        <h2>自分の履歴</h2>
+        <div class="month-btns" id="history-month-btns"></div>
+        <div id="history-avg" class="avg-box" style="display:none;"></div>
+        <div class="loading-row" id="history-loading" style="display:none;"><span class="spinner"></span>読み込み中...</div>
+        <div id="history-content"></div>
       </div>
+    </div>
 
+    <!-- 全員タブ -->
+    <div id="tab-admin" class="tab-content">
       <div class="card">
-        <h2 class="withico"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4.2 18.6h15.6"/><path d="M3.4 7.2 7.6 10.6 12 4.9l4.4 5.7 4.2-3.4-1.5 8.3H4.9z"/></svg></span>これまでの記録</h2>
-        <div class="sub" id="myTotals"></div>
-        <div class="tablewrap">
-          <table><thead><tr><th>日付</th><th class="n">お祈り</th><th class="n">章数</th><th class="n">声かけ</th></tr></thead>
-          <tbody id="myRows"></tbody></table>
-        </div>
-        <div class="empty hidden" id="myEmpty">まだ記録がありません。上のフォームから最初の1日を記録してください。</div>
+        <h2>全員のお祈り記録</h2>
+        <div class="month-btns" id="admin-month-btns"></div>
+        <div class="loading-row" id="admin-loading" style="display:none;"><span class="spinner"></span>読み込み中...</div>
+        <div class="overflow-wrap"><div id="admin-content"></div></div>
       </div>
-
-      <div class="card">
-        <h2 class="withico"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="2.8" y="4.8" width="18.4" height="14.4" rx="2.6"/><circle cx="8.6" cy="10.8" r="2"/><path d="M5.5 16.4c.5-1.5 1.7-2.3 3.1-2.3s2.6.8 3.1 2.3"/><path d="M14.8 10.2h3.6M14.8 13.6h3.6"/></svg></span>登録情報</h2>
-        <div class="sub">教会が変わったときはここで変更してください。</div>
-        <div class="msg" id="profMsg"></div>
-        <div class="field"><label for="profName"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.4"/><path d="M5 20.2c0-3.6 3.1-5.6 7-5.6s7 2 7 5.6"/></svg></span>名前</label><input id="profName" type="text"></div>
-        <div class="row">
-          <div class="field"><label for="profGender"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="9.2" cy="8.2" r="3"/><path d="M3.2 20c0-3.2 2.7-4.9 6-4.9s6 1.7 6 4.9"/><path d="M16.2 5.7a3 3 0 0 1 0 5.4"/><path d="M18 15.5c1.8.7 2.9 2 2.9 4.2"/></svg></span>性別</label>
-            <select id="profGender"><option>男性</option><option>女性</option></select></div>
-          <div class="field"><label for="profChurch"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5v3.6M10.3 4.3h3.4"/><path d="M12 6.6 5.6 11.2v9.2h12.8v-9.2z"/><path d="M10.3 20.4v-3.9a1.7 1.7 0 0 1 3.4 0v3.9"/></svg></span>教会</label><select id="profChurch"></select></div>
-        </div>
-        <button class="btn ghost" id="profSave">変更を保存する</button>
-      </div>
-    </section>
-
-    <!-- ---- 管理・集計（管理者のみ） ---- -->
-    <section id="adminView" class="hidden">
-      <div class="card">
-        <h2>条件期間の設定</h2>
-        <div class="sub">この期間に入っている記録だけを集計します。参加者は期間内の日付しか記録できません。</div>
-        <div class="msg" id="cfgMsg"></div>
-        <div class="row">
-          <div class="field"><label for="cfgStart">開始日</label><input id="cfgStart" type="date"></div>
-          <div class="field"><label for="cfgEnd">終了日</label><input id="cfgEnd" type="date"></div>
-        </div>
-        <div class="field" style="max-width:320px">
-          <label for="cfgMin">お祈り開始時間ランキングに載る最低記録日数</label>
-          <input id="cfgMin" type="number" min="1" max="365" inputmode="numeric">
-        </div>
-        <button class="btn sm" id="cfgSave">設定を保存する</button>
-      </div>
-
-      <div class="tabs" role="tablist">
-        <button class="tab" role="tab" data-pane="paneList" aria-selected="true">一覧</button>
-        <button class="tab" role="tab" data-pane="paneIndiv" aria-selected="false">個人ランキング</button>
-        <button class="tab" role="tab" data-pane="paneChurch" aria-selected="false">教会ランキング</button>
-      </div>
-
-      <div class="card" id="paneList">
-        <h2>全員の集計</h2>
-        <div class="sub" id="listNote"></div>
-        <div class="warnbox">テスト用の削除は管理者だけができます。削除した記録と登録は元に戻せません。本番の運用に入ったら、削除の権限を外すこともできます。</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
-          <button class="btn ghost sm" id="reloadBtn">最新の状態にする</button>
-          <button class="btn ghost sm" id="csvSummary">一覧をCSVで保存</button>
-          <button class="btn ghost sm" id="csvRaw">全記録をCSVで保存</button>
-        </div>
-        <div class="tablewrap">
-          <table>
-            <thead><tr>
-              <th data-sort="name">名前</th><th data-sort="church">教会</th><th data-sort="gender">性別</th>
-              <th class="n" data-sort="days">記録日数</th><th class="n" data-sort="wake">お祈り平均</th>
-              <th class="n" data-sort="chap">章数合計</th><th class="n" data-sort="call">声かけ合計</th>
-              <th>操作</th>
-            </tr></thead>
-            <tbody id="adminRows"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="card hidden" id="dayPanel">
-        <h2 id="dayPanelName"></h2>
-        <div class="sub">日付ごとに消せます。消した記録は元に戻せません。</div>
-        <div class="msg" id="dayMsg"></div>
-        <div class="tablewrap">
-          <table><thead><tr><th>日付</th><th class="n">お祈り</th><th class="n">章数</th><th class="n">声かけ</th><th></th></tr></thead>
-          <tbody id="dayRows"></tbody></table>
-        </div>
-        <div style="margin-top:14px"><button class="btn ghost sm" id="dayClose">閉じる</button></div>
-      </div>
-
-      <div class="card hidden" id="paneIndiv">
-        <h2>個人ランキング</h2>
-        <div class="sub" id="indivNote"></div>
-        <div class="ranks">
-          <div class="rank"><h3>明け方お祈り平均開始時間</h3><div class="cap" id="capWake"></div><ol id="rkWake"></ol></div>
-          <div class="rank"><h3>聖書の章数</h3><div class="cap">期間中の合計</div><ol id="rkChap"></ol></div>
-          <div class="rank"><h3>声かけ人数</h3><div class="cap">期間中の合計</div><ol id="rkCall"></ol></div>
-        </div>
-      </div>
-
-      <div class="card hidden" id="paneChurch">
-        <h2>教会ランキング</h2>
-        <div class="sub">章数と声かけは「合計 ÷ その教会の登録人数」。お祈り開始時間は最低記録日数を満たした人の平均です。</div>
-        <div class="ranks">
-          <div class="rank"><h3>明け方お祈り平均開始時間</h3><div class="cap">教会の平均</div><ol id="crWake"></ol></div>
-          <div class="rank"><h3>聖書の章数</h3><div class="cap">1人あたり</div><ol id="crChap"></ol></div>
-          <div class="rank"><h3>声かけ人数</h3><div class="cap">1人あたり</div><ol id="crCall"></ol></div>
-        </div>
-      </div>
-    </section>
-
-  </main>
+    </div>
+  </div>
 </div>
 
-<script type="module">
-/* ============================================================
-   ① ここに Firebase の設定を貼り付けてください
-   Firebaseコンソール → プロジェクトの設定 → マイアプリ → 構成
-   ============================================================ */
-const firebaseConfig = {
-  apiKey: "AIzaSyALMtmbf_quflYa2_OS2ao4dwNUWUY4UZU",
-  authDomain: "cp-summer-record.firebaseapp.com",
-  projectId: "cp-summer-record",
-  storageBucket: "cp-summer-record.firebasestorage.app",
-  messagingSenderId: "722419182508",
-  appId: "1:722419182508:web:3e22b1df1cbb38483c6809"
-};
-
-/* ② 管理者のメールアドレス（Firestoreのルール側にも同じものを書きます） */
-const ADMIN_EMAILS = ["korosuke19750223@gmail.com", "japan.campus.rrr@gmail.com"];
-
-/* ③ 教会名（CHタブの内容。増えたらここに1行足してください） */
-const CHURCHES = ["聖恩","主信仰/主愛癒","始音","千葉愛","主の峰","主の岩","セイル","東京主信仰","主真愛","主新和","希望光","主の道","横浜主真理","天運","主の栄光","北陸主栄光","京都愛火","主聖霊","大阪主愛","神戸主の心","主希望","主平和","主恵城","真の愛","埠頭","主多雲","明火","和睦","聖陽"];
-
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
-  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, getDocs }
-  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-
-const $ = id => document.getElementById(id);
-const show = (el, on) => el.classList.toggle("hidden", !on);
-const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-
-let me = null;        // Firebase の user
-let myDoc = null;     // users/{uid} の中身
-let cfg = null;       // config/app
-let isAdmin = false;
-let adminData = [];   // 集計用（管理者のみ）
-let sortKey = "wake", sortAsc = true;
-
-/* ---------- 時刻ユーティリティ ---------- */
-const toMin = hhmm => { const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm || ""); return m ? (+m[1]) * 60 + (+m[2]) : null; };
-const toHHMM = min => min == null ? "—" : `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(Math.round(min % 60)).padStart(2, "0")}`;
-const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
-const say = (el, text, kind) => { el.className = "msg " + (kind || ""); el.textContent = text; if (!text) el.className = "msg"; };
-
-/* 夜明けの帯（3:00〜9:00）にマーカーを置く */
-function drawDawn(min) {
-  const bar = $("dawnMark");
-  if (min == null) { bar.style.left = "-99px"; return; }
-  const pct = Math.min(100, Math.max(0, ((min - 180) / 360) * 100));
-  bar.style.left = `calc(${pct}% - 1px)`;
-}
-
-/* ---------- 起動 ---------- */
-CHURCHES.forEach(c => {
-  for (const sel of [$("regChurch"), $("profChurch")]) {
-    const o = document.createElement("option"); o.value = c; o.textContent = c; sel.appendChild(o);
-  }
-});
-
-$("googleBtn").onclick = async () => {
-  try { await signInWithPopup(auth, new GoogleAuthProvider()); }
-  catch (e) { alert("ログインできませんでした。もう一度お試しください。\n" + (e.code || e.message)); }
-};
-$("logoutBtn").onclick = () => signOut(auth);
-
-onAuthStateChanged(auth, async user => {
-  me = user;
-  if (!user) { show($("loginView"), true); show($("appView"), false); return; }
-  show($("loginView"), false); show($("appView"), true);
-  isAdmin = ADMIN_EMAILS.includes((user.email || "").toLowerCase());
-  show($("toAdmin"), isAdmin);
-  $("whoami").textContent = user.email + (isAdmin ? "（管理者）" : "");
-
-  cfg = await loadConfig();
-  const snap = await getDoc(doc(db, "users", user.uid));
-  if (!snap.exists()) { openRegistration(); return; }
-  myDoc = snap.data();
-  openRecord();
-});
-
-async function loadConfig() {
-  try { const s = await getDoc(doc(db, "config", "app")); return s.exists() ? s.data() : null; }
-  catch { return null; }
-}
-
-/* ---------- 画面切り替え ---------- */
-function openRegistration() {
-  $("viewTitle").textContent = "個人登録";
-  show($("regView"), true); show($("recordView"), false); show($("adminView"), false);
-  show($("toRecord"), false); show($("toAdmin"), false);
-  $("regName").value = me.displayName || "";
-}
-function openRecord() {
-  $("viewTitle").textContent = "CP 21日条件記録";
-  show($("regView"), false); show($("recordView"), true); show($("adminView"), false);
-  show($("toRecord"), false); show($("toAdmin"), isAdmin);
-
-  $("profName").value = myDoc.name || "";
-  $("profGender").value = myDoc.gender || "男性";
-  $("profChurch").value = myDoc.church || "";
-
-  const d = $("recDate");
-  if (cfg?.periodStart && cfg?.periodEnd) {
-    d.min = cfg.periodStart; d.max = cfg.periodEnd;
-    const t = todayStr();
-    d.value = t < cfg.periodStart ? cfg.periodStart : (t > cfg.periodEnd ? cfg.periodEnd : t);
-    $("periodNote").textContent = `条件期間：${cfg.periodStart} 〜 ${cfg.periodEnd}`;
-    $("recSave").disabled = false;
-    say($("recMsg"), "", "");
-  } else {
-    d.value = todayStr();
-    $("periodNote").textContent = "";
-    $("recSave").disabled = true;
-    say($("recMsg"), "条件期間がまだ設定されていません。管理者が期間を設定すると記録できるようになります。", "info");
-  }
-  loadDay();
-  renderMine();
-}
-$("toAdmin").onclick = () => openAdmin();
-$("toRecord").onclick = () => openRecord();
-
-/* ---------- 個人登録 ---------- */
-$("regSave").onclick = async () => {
-  const name = $("regName").value.trim(), gender = $("regGender").value, church = $("regChurch").value;
-  if (!name || !gender || !church) { say($("regMsg"), "名前・性別・教会をすべて入力してください。", "err"); return; }
-  $("regSave").disabled = true;
-  try {
-    const data = { email: me.email, name, gender, church, days: {}, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-    await setDoc(doc(db, "users", me.uid), data);
-    myDoc = data;
-    openRecord();
-  } catch (e) { say($("regMsg"), "登録できませんでした：" + (e.code || e.message), "err"); }
-  finally { $("regSave").disabled = false; }
-};
-
-$("profSave").onclick = async () => {
-  const name = $("profName").value.trim(), gender = $("profGender").value, church = $("profChurch").value;
-  if (!name || !church) { say($("profMsg"), "名前と教会を入力してください。", "err"); return; }
-  try {
-    await updateDoc(doc(db, "users", me.uid), { name, gender, church, updatedAt: new Date().toISOString() });
-    myDoc.name = name; myDoc.gender = gender; myDoc.church = church;
-    say($("profMsg"), "変更を保存しました。", "ok");
-  } catch (e) { say($("profMsg"), "保存できませんでした：" + (e.code || e.message), "err"); }
-};
-
-/* ---------- 記録 ---------- */
-$("recDate").onchange = loadDay;
-$("recWake").oninput = () => drawDawn(toMin($("recWake").value));
-
-function loadDay() {
-  const d = $("recDate").value;
-  const r = (myDoc?.days || {})[d] || {};
-  $("recWake").value = r.wake != null ? toHHMM(r.wake) : "";
-  $("recChap").value = r.chapters != null ? r.chapters : "";
-  $("recCall").value = r.outreach != null ? r.outreach : "";
-  drawDawn(r.wake ?? null);
-}
-
-$("recSave").onclick = async () => {
-  const date = $("recDate").value;
-  if (!date) { say($("recMsg"), "日付を選んでください。", "err"); return; }
-  if (cfg && (date < cfg.periodStart || date > cfg.periodEnd)) {
-    say($("recMsg"), "条件期間の外の日付は記録できません。", "err"); return;
-  }
-  const wake = toMin($("recWake").value);
-  const chapters = $("recChap").value === "" ? null : Math.max(0, parseInt($("recChap").value, 10) || 0);
-  const outreach = $("recCall").value === "" ? null : Math.max(0, parseInt($("recCall").value, 10) || 0);
-  if (wake == null && chapters == null && outreach == null) {
-    say($("recMsg"), "お祈り開始時間・章数・声かけのどれか1つは入力してください。", "err"); return;
-  }
-  const entry = { updatedAt: new Date().toISOString() };
-  if (wake != null) entry.wake = wake;
-  if (chapters != null) entry.chapters = chapters;
-  if (outreach != null) entry.outreach = outreach;
-
-  $("recSave").disabled = true;
-  try {
-    await updateDoc(doc(db, "users", me.uid), { [`days.${date}`]: entry, updatedAt: new Date().toISOString() });
-    myDoc.days = myDoc.days || {};
-    myDoc.days[date] = entry;
-    say($("recMsg"), `${date} の記録を保存しました。`, "ok");
-    renderMine();
-  } catch (e) { say($("recMsg"), "保存できませんでした：" + (e.code || e.message), "err"); }
-  finally { $("recSave").disabled = false; }
-};
-
-function inPeriod(d) { return !cfg?.periodStart || (d >= cfg.periodStart && d <= cfg.periodEnd); }
-
-function summarize(days) {
-  let wakeSum = 0, wakeN = 0, chap = 0, call = 0, n = 0;
-  for (const [d, r] of Object.entries(days || {})) {
-    if (!inPeriod(d)) continue;
-    n++;
-    if (r.wake != null) { wakeSum += r.wake; wakeN++; }
-    chap += r.chapters || 0;
-    call += r.outreach || 0;
-  }
-  return { days: n, wakeDays: wakeN, wake: wakeN ? wakeSum / wakeN : null, chap, call };
-}
-
-function renderMine() {
-  const days = myDoc.days || {};
-  const keys = Object.keys(days).sort().reverse();
-  const s = summarize(days);
-  $("myTotals").textContent = keys.length
-    ? `記録日数 ${s.days}日　お祈り平均 ${toHHMM(s.wake)}　章数合計 ${s.chap}　声かけ合計 ${s.call}`
-    : "";
-  show($("myEmpty"), keys.length === 0);
-  $("myRows").innerHTML = keys.slice(0, 60).map(d => {
-    const r = days[d];
-    return `<tr><td>${d}</td><td class="n">${toHHMM(r.wake ?? null)}</td><td class="n">${r.chapters ?? "—"}</td><td class="n">${r.outreach ?? "—"}</td></tr>`;
-  }).join("");
-}
-
-/* ---------- 管理・集計 ---------- */
-async function openAdmin() {
-  if (!isAdmin) return;
-  $("viewTitle").textContent = "集計・管理";
-  show($("regView"), false); show($("recordView"), false); show($("adminView"), true);
-  show($("toRecord"), true); show($("toAdmin"), false);
-  $("cfgStart").value = cfg?.periodStart || "";
-  $("cfgEnd").value = cfg?.periodEnd || "";
-  $("cfgMin").value = cfg?.minDays ?? 10;
-  await loadAll();
-}
-
-$("cfgSave").onclick = async () => {
-  const periodStart = $("cfgStart").value, periodEnd = $("cfgEnd").value;
-  const minDays = Math.max(1, parseInt($("cfgMin").value, 10) || 1);
-  if (!periodStart || !periodEnd || periodStart > periodEnd) {
-    say($("cfgMsg"), "開始日と終了日を正しく入力してください。", "err"); return;
-  }
-  try {
-    await setDoc(doc(db, "config", "app"), { periodStart, periodEnd, minDays, updatedAt: new Date().toISOString() });
-    cfg = { periodStart, periodEnd, minDays };
-    say($("cfgMsg"), "設定を保存しました。集計もこの期間で計算し直しました。", "ok");
-    renderAll();
-  } catch (e) { say($("cfgMsg"), "保存できませんでした：" + (e.code || e.message), "err"); }
-};
-
-$("reloadBtn").onclick = loadAll;
-
-async function loadAll() {
-  $("adminRows").innerHTML = `<tr><td colspan="8" style="color:var(--gray)">読み込んでいます…</td></tr>`;
-  try {
-    const snap = await getDocs(collection(db, "users"));
-    adminData = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
-    renderAll();
-  } catch (e) {
-    $("adminRows").innerHTML = `<tr><td colspan="8" style="color:var(--danger)">読み込めませんでした：${esc(e.code || e.message)}</td></tr>`;
-  }
-}
-
-function rows() {
-  return adminData.map(u => {
-    const s = summarize(u.days);
-    return { uid: u.uid, name: u.name || "(未登録)", church: u.church || "—", gender: u.gender || "—", ...s };
-  });
-}
-
-function renderAll() {
-  const rs = rows();
-  const minDays = cfg?.minDays ?? 1;
-  $("listNote").textContent = cfg?.periodStart
-    ? `${cfg.periodStart} 〜 ${cfg.periodEnd}　参加者 ${rs.length}名`
-    : `条件期間が未設定のため、全期間で集計しています。参加者 ${rs.length}名`;
-  $("indivNote").textContent = `各10名まで。同点は名前順です。`;
-  $("capWake").textContent = `早い順・${minDays}日以上記録した人が対象`;
-
-  /* 一覧 */
-  const sorted = [...rs].sort((a, b) => {
-    const va = a[sortKey], vb = b[sortKey];
-    if (va == null) return 1; if (vb == null) return -1;
-    const c = typeof va === "string" ? va.localeCompare(vb, "ja") : va - vb;
-    return sortAsc ? c : -c;
-  });
-  $("adminRows").innerHTML = sorted.length ? sorted.map(r => `<tr>
-      <td>${esc(r.name)}</td><td>${esc(r.church)}</td><td>${esc(r.gender)}</td>
-      <td class="n">${r.days}</td><td class="n">${toHHMM(r.wake)}</td>
-      <td class="n">${r.chap}</td><td class="n">${r.call}</td>
-      <td><button class="mini" data-days="${r.uid}">記録を見る</button><button class="mini del" data-deluser="${r.uid}">登録ごと削除</button></td></tr>`).join("")
-    : `<tr><td colspan="8" style="color:var(--gray)">記録がまだありません。</td></tr>`;
-  bindRowButtons();
-
-  /* 個人ランキング */
-  const list = (items, fmt) => items.length
-    ? items.slice(0, 10).map(i => `<li><span class="pos"></span><span class="nm">${esc(i.name)}</span><span class="ch">${esc(i.church)}</span><span class="v">${fmt(i)}</span></li>`).join("")
-    : `<li style="color:var(--gray);border:none">該当者がいません</li>`;
-
-  const wakeElig = rs.filter(r => r.wake != null && r.wakeDays >= minDays)
-    .sort((a, b) => a.wake - b.wake || a.name.localeCompare(b.name, "ja"));
-  $("rkWake").innerHTML = list(wakeElig, i => toHHMM(i.wake));
-  $("rkChap").innerHTML = list([...rs].filter(r => r.chap > 0).sort((a, b) => b.chap - a.chap || a.name.localeCompare(b.name, "ja")), i => i.chap);
-  $("rkCall").innerHTML = list([...rs].filter(r => r.call > 0).sort((a, b) => b.call - a.call || a.name.localeCompare(b.name, "ja")), i => i.call);
-
-  /* 教会ランキング（1人あたり） */
-  const byCh = {};
-  for (const r of rs) {
-    const k = r.church;
-    (byCh[k] ||= { name: k, church: "", members: 0, chap: 0, call: 0, wakeSum: 0, wakeN: 0 });
-    byCh[k].members++; byCh[k].chap += r.chap; byCh[k].call += r.call;
-    if (r.wake != null && r.wakeDays >= minDays) { byCh[k].wakeSum += r.wake; byCh[k].wakeN++; }
-  }
-  const chs = Object.values(byCh).map(c => ({
-    ...c,
-    chapAvg: c.members ? c.chap / c.members : 0,
-    callAvg: c.members ? c.call / c.members : 0,
-    wakeAvg: c.wakeN ? c.wakeSum / c.wakeN : null
-  }));
-  const clist = (items, fmt) => items.length
-    ? items.slice(0, 10).map(i => `<li><span class="pos"></span><span class="nm">${esc(i.name)}</span><span class="ch">${i.members}名</span><span class="v">${fmt(i)}</span></li>`).join("")
-    : `<li style="color:var(--gray);border:none">該当する教会がありません</li>`;
-  $("crWake").innerHTML = clist(chs.filter(c => c.wakeAvg != null).sort((a, b) => a.wakeAvg - b.wakeAvg), i => toHHMM(i.wakeAvg));
-  $("crChap").innerHTML = clist(chs.filter(c => c.chapAvg > 0).sort((a, b) => b.chapAvg - a.chapAvg), i => i.chapAvg.toFixed(1));
-  $("crCall").innerHTML = clist(chs.filter(c => c.callAvg > 0).sort((a, b) => b.callAvg - a.callAvg), i => i.callAvg.toFixed(1));
-}
-
-/* ---------- 削除（管理者のみ・テスト用） ---------- */
-let dayPanelUid = null;
-
-function bindRowButtons() {
-  document.querySelectorAll("[data-days]").forEach(b => b.onclick = () => openDayPanel(b.dataset.days));
-  document.querySelectorAll("[data-deluser]").forEach(b => b.onclick = () => removeUser(b.dataset.deluser));
-}
-
-function openDayPanel(uid) {
-  const u = adminData.find(x => x.uid === uid);
-  if (!u) return;
-  dayPanelUid = uid;
-  show($("dayPanel"), true);
-  $("dayPanelName").textContent = `${u.name || "(未登録)"} の記録`;
-  say($("dayMsg"), "", "");
-  renderDayPanel();
-  $("dayPanel").scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-function renderDayPanel() {
-  const u = adminData.find(x => x.uid === dayPanelUid);
-  if (!u) { show($("dayPanel"), false); return; }
-  const keys = Object.keys(u.days || {}).sort().reverse();
-  $("dayRows").innerHTML = keys.length ? keys.map(d => {
-    const r = u.days[d];
-    return `<tr><td>${d}</td><td class="n">${toHHMM(r.wake ?? null)}</td><td class="n">${r.chapters ?? "—"}</td>
-      <td class="n">${r.outreach ?? "—"}</td>
-      <td><button class="mini del" data-delday="${d}">削除</button></td></tr>`;
-  }).join("") : `<tr><td colspan="5" style="color:var(--gray)">記録がありません。</td></tr>`;
-  document.querySelectorAll("[data-delday]").forEach(b => b.onclick = () => removeDay(b.dataset.delday));
-}
-
-async function removeDay(date) {
-  if (!confirm(`${date} の記録を削除します。元に戻せません。よろしいですか。`)) return;
-  try {
-    await updateDoc(doc(db, "users", dayPanelUid), { [`days.${date}`]: deleteField() });
-    const u = adminData.find(x => x.uid === dayPanelUid);
-    delete u.days[date];
-    if (dayPanelUid === me.uid && myDoc?.days) delete myDoc.days[date];
-    say($("dayMsg"), `${date} の記録を削除しました。`, "ok");
-    renderDayPanel(); renderAll();
-  } catch (e) { say($("dayMsg"), "削除できませんでした：" + (e.code || e.message), "err"); }
-}
-
-async function removeUser(uid) {
-  const u = adminData.find(x => x.uid === uid);
-  if (!u) return;
-  const n = Object.keys(u.days || {}).length;
-  if (!confirm(`${u.name || "(未登録)"} さんの登録と記録${n}日分をすべて削除します。元に戻せません。よろしいですか。`)) return;
-  try {
-    await deleteDoc(doc(db, "users", uid));
-    adminData = adminData.filter(x => x.uid !== uid);
-    if (dayPanelUid === uid) { show($("dayPanel"), false); dayPanelUid = null; }
-    if (uid === me.uid) { myDoc = null; alert("自分の登録を削除しました。もう一度登録画面から始めます。"); openRegistration(); return; }
-    renderAll();
-  } catch (e) { alert("削除できませんでした：" + (e.code || e.message)); }
-}
-
-$("dayClose").onclick = () => { show($("dayPanel"), false); dayPanelUid = null; };
-
-/* 並べ替え */
-document.querySelectorAll("th[data-sort]").forEach(th => {
-  th.style.cursor = "pointer";
-  th.onclick = () => {
-    const k = th.dataset.sort;
-    if (sortKey === k) sortAsc = !sortAsc; else { sortKey = k; sortAsc = (k === "wake" || k === "name" || k === "church" || k === "gender"); }
-    renderAll();
-  };
-});
-
-/* タブ */
-document.querySelectorAll(".tab").forEach(t => {
-  t.onclick = () => {
-    document.querySelectorAll(".tab").forEach(x => x.setAttribute("aria-selected", String(x === t)));
-    for (const id of ["paneList", "paneIndiv", "paneChurch"]) show($(id), id === t.dataset.pane);
-    if (t.dataset.pane !== "paneList") { show($("dayPanel"), false); dayPanelUid = null; }
-  };
-});
-
-/* CSV */
-function download(name, rowsArr) {
-  const csv = rowsArr.map(r => r.map(v => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",")).join("\r\n");
-  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob); a.download = name; a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-}
-$("csvSummary").onclick = () => {
-  const out = [["名前", "教会", "性別", "記録日数", "明け方お祈り平均開始時間", "章数合計", "声かけ合計"]];
-  rows().forEach(r => out.push([r.name, r.church, r.gender, r.days, toHHMM(r.wake), r.chap, r.call]));
-  download(`集計_${cfg?.periodStart || "全期間"}_${cfg?.periodEnd || ""}.csv`, out);
-};
-$("csvRaw").onclick = () => {
-  const out = [["日付", "名前", "教会", "性別", "お祈り開始時間", "章数", "声かけ人数"]];
-  adminData.forEach(u => {
-    Object.keys(u.days || {}).sort().forEach(d => {
-      if (!inPeriod(d)) return;
-      const r = u.days[d];
-      out.push([d, u.name || "", u.church || "", u.gender || "", toHHMM(r.wake ?? null), r.chapters ?? "", r.outreach ?? ""]);
-    });
-  });
-  download(`全記録_${cfg?.periodStart || "全期間"}_${cfg?.periodEnd || ""}.csv`, out);
-};
-</script>
+<!-- 確認モーダル -->
+<div id="confirm-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;padding:1rem;">
+  <div style="background:#fff;border-radius:12px;padding:1.5rem;max-width:360px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+    <p id="modal-message" style="font-size:14px;color:#1a1a1a;margin-bottom:1.25rem;line-height:1.6;white-space:pre-line;"></p>
+    <div style="display:flex;gap:8px;">
+      <button id="modal-cancel" style="flex:1;padding:10px;border-radius:6px;border:1px solid #ccc;background:#f5f5f5;color:#666;font-size:14px;font-family:inherit;cursor:pointer;">キャンセル</button>
+      <button id="modal-ok" style="flex:1;padding:10px;border-radius:6px;border:none;background:#2563eb;color:#fff;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer;">上書きする</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
