@@ -123,7 +123,7 @@
     // ============================================================
     onAuthStateChanged(auth, async user => {
       if (user) {
-        const memberDoc = await getDoc(doc(db, 'members', user.uid));
+        const memberDoc = await getDoc(doc(db, 'members', user.email));
         currentUser = { uid: user.uid, email: user.email };
         if (memberDoc.exists()) {
           const data = memberDoc.data();
@@ -158,7 +158,7 @@
       hideMsg('reg-error'); hideMsg('reg-success');
       if (!name || !church) { showMsg('reg-error', '全項目を入力してください', 'error'); return; }
       try {
-        await setDoc(doc(db, 'members', currentUser.uid), {
+        await setDoc(doc(db, 'members', currentUser.email), {
           email: currentUser.email, name, church,
           createdAt: new Date().toISOString()
         });
@@ -190,7 +190,7 @@
 
     async function prefetchRecords() {
       try {
-        const q = query(collection(db, 'records'), where('uid', '==', currentUser.uid), orderBy('date'));
+        const q = query(collection(db, 'records'), where('email', '==', currentUser.email), orderBy('date'));
         const snap = await getDocs(q);
         allRecords = snap.docs.map(d => d.data());
       } catch(e) {}
@@ -232,9 +232,8 @@
       btn.disabled = true;
 
       try {
-        const recordId = `${currentUser.uid}_${date}`;
+        const recordId = `${currentUser.email}_${date}`;
         await setDoc(doc(db, 'records', recordId), {
-          uid: currentUser.uid,
           email: currentUser.email,
           date, prayTime: time,
           recordedAt: new Date().toISOString()
@@ -242,7 +241,7 @@
         showMsg('input-success', existing ? '上書き保存しました！' : '記録しました！', 'success');
         const idx = allRecords.findIndex(r => r.date === date);
         if (idx >= 0) { allRecords[idx].prayTime = time; }
-        else { allRecords.push({ date, prayTime: time, uid: currentUser.uid, email: currentUser.email }); }
+        else { allRecords.push({ date, prayTime: time, email: currentUser.email }); }
         allAdminData = null;
       } catch(e) {
         showMsg('input-error', 'エラーが発生しました', 'error');
@@ -260,7 +259,7 @@
         document.getElementById('history-loading').style.display = 'flex';
         document.getElementById('history-content').innerHTML = '';
         try {
-          const q = query(collection(db, 'records'), where('uid', '==', currentUser.uid), orderBy('date'));
+          const q = query(collection(db, 'records'), where('email', '==', currentUser.email), orderBy('date'));
           const snap = await getDocs(q);
           allRecords = snap.docs.map(d => d.data());
         } catch(e) {
