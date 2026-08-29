@@ -5,6 +5,558 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>お祈り開始時間トラッカー | CGM</title>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+    import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+      from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+    import { getFirestore, doc, getDoc, setDoc, collection, query, where, getDocs, orderBy }
+      from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyD0FXYbX7ck2RduoSI6w8oUdabQWsBW16U",
+      authDomain: "cgm-wake-tracker.firebaseapp.com",
+      projectId: "cgm-wake-tracker",
+      storageBucket: "cgm-wake-tracker.firebasestorage.app",
+      messagingSenderId: "337536228102",
+      appId: "1:337536228102:web:af75a83cff745a878d1c87"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const provider = new GoogleAuthProvider();
+    const ADMIN_EMAIL = 'korosuke19750223@gmail.com';
+
+    // 集計期間ボックスを表示しない月
+    const NO_COLLECTION_MONTHS = ['09'];
+
+    let currentUser = null;
+    let allRecords = [];
+    let allAdminData = null;
+    let currentHistoryMonth = null;
+    let currentAdminMonth = null;
+
+    // ============================================================
+    // ユーティリティ
+    // ============================================================
+    function isCrownTime(t) {
+      if (!t) return false;
+      const [h, m] = t.split(':').map(Number);
+      return h < 3 || (h === 3 && m === 0);
+    }
+    function timeToMinutes(t) {
+      if (!t) return null;
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + m;
+    }
+    function minutesToTime(m) {
+      const h = Math.floor(m / 60) % 24;
+      const mm = Math.round(m % 60);
+      return String(h).padStart(2,'0') + ':' + String(mm).padStart(2,'0');
+    }
+    function getYearMonth(d) { return d ? d.slice(0, 7) : ''; }
+    function formatDate(d) {
+      const p = d.split('-');
+      return p.length === 3 ? p[0]+'/'+p[1]+'/'+p[2] : d;
+    }
+    function monthLabel(ym) {
+      const [y, m] = ym.split('-');
+      return y + '年' + parseInt(m) + '月';
+    }
+    function buildStreakMap(records) {
+      const seen = new Set();
+      const deduped = [];
+      [...records].sort((a,b) => a.date.localeCompare(b.date)).forEach(r => {
+        if (!seen.has(r.date)) { seen.add(r.date); deduped.push(r); }
+      });
+      const map = {};
+      let streak = 0;
+      deduped.forEach((r, i) => {
+        if (!isCrownTime(r.prayTime)) { streak = 0; }
+        else if (i === 0) { streak = 1; }
+        else {
+          const diff = (new Date(r.date) - new Date(deduped[i-1].date)) / 86400000;
+          streak = (diff === 1 && isCrownTime(deduped[i-1].prayTime)) ? streak + 1 : 1;
+        }
+        map[r.date] = streak;
+      });
+      return map;
+    }
+    function buildMonthList(records) {
+      const months = [...new Set(records.map(r => getYearMonth(r.date)))].filter(Boolean);
+      months.sort((a, b) => b.localeCompare(a));
+      return months;
+    }
+
+    function showScreen(id) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+    }
+    function showMsg(id, text, type) {
+      const el = document.getElementById(id);
+      el.textContent = text;
+      el.className = 'msg show msg-' + type;
+      if (type === 'success') setTimeout(() => el.classList.remove('show'), 3000);
+    }
+    function hideMsg(id) {
+      const el = document.getElementById(id);
+      if (el) el.classList.remove('show');
+    }
+    function showConfirmModal(message) {
+      return new Promise(resolve => {
+        document.getElementById('modal-message').textContent = message;
+        document.getElementById('confirm-modal').style.display = 'flex';
+        document.getElementById('modal-ok').onclick = () => {
+          document.getElementById('confirm-modal').style.display = 'none';
+          resolve(true);
+        };
+        document.getElementById('modal-cancel').onclick = () => {
+          document.getElementById('confirm-modal').style.display = 'none';
+          resolve(false);
+        };
+      });
+    }
+
+    // ============================================================
+    // 認証
+    // ============================================================
+    onAuthStateChanged(auth, async user => {
+      if (user) {
+        const memberDoc = await getDoc(doc(db, 'members', user.uid));
+        currentUser = { uid: user.uid, email: user.email };
+        if (memberDoc.exists()) {
+          const data = memberDoc.data();
+          currentUser.name = data.name;
+          currentUser.church = data.church;
+          enterMain();
+        } else {
+          showScreen('screen-register');
+        }
+      } else {
+        currentUser = null;
+        showScreen('screen-login');
+      }
+    });
+
+    window.doGoogleLogin = async function() {
+      const btn = document.getElementById('login-btn');
+      btn.innerHTML = '<span class="spinner"></span> ログイン中...';
+      btn.disabled = true;
+      try {
+        await signInWithPopup(auth, provider);
+      } catch(e) {
+        showMsg('login-error', 'ログインに失敗しました', 'error');
+        btn.innerHTML = 'Googleでログイン';
+        btn.disabled = false;
+      }
+    };
+
+    window.doRegister = async function() {
+      const name = document.getElementById('reg-name').value.trim();
+      const church = document.getElementById('reg-church').value.trim();
+      hideMsg('reg-error'); hideMsg('reg-success');
+      if (!name || !church) { showMsg('reg-error', '全項目を入力してください', 'error'); return; }
+      try {
+        await setDoc(doc(db, 'members', currentUser.uid), {
+          email: currentUser.email, name, church,
+          createdAt: new Date().toISOString()
+        });
+        currentUser.name = name; currentUser.church = church;
+        showMsg('reg-success', '登録しました！', 'success');
+        setTimeout(() => enterMain(), 800);
+      } catch(e) { showMsg('reg-error', 'エラーが発生しました', 'error'); }
+    };
+
+    window.doLogout = async function() {
+      await signOut(auth);
+      allRecords = []; allAdminData = null;
+    };
+
+    function enterMain() {
+      showScreen('screen-main');
+      document.getElementById('main-name').textContent = currentUser.name;
+      document.getElementById('main-church').textContent = currentUser.church;
+      document.getElementById('user-avatar').textContent = currentUser.name.charAt(0);
+      const isAdmin = currentUser.email === ADMIN_EMAIL;
+      document.getElementById('admin-badge').style.display = isAdmin ? '' : 'none';
+      document.getElementById('admin-tab-btn').style.display = isAdmin ? '' : 'none';
+      const today = new Date().toLocaleDateString('sv-SE');
+      document.getElementById('input-date').value = today;
+      allRecords = []; allAdminData = null;
+      showTab('input');
+      prefetchRecords();
+    }
+
+    async function prefetchRecords() {
+      try {
+        const q = query(collection(db, 'records'), where('uid', '==', currentUser.uid), orderBy('date'));
+        const snap = await getDocs(q);
+        allRecords = snap.docs.map(d => d.data());
+      } catch(e) {}
+    }
+
+    // ============================================================
+    // タブ
+    // ============================================================
+    window.showTab = function(tab) {
+      ['input','history','admin'].forEach(t => {
+        document.getElementById('tab-'+t).classList.toggle('active', t === tab);
+      });
+      document.querySelectorAll('.tab').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('onclick') === `showTab('${tab}')`);
+      });
+      if (tab === 'history') loadHistory();
+      if (tab === 'admin') loadAdmin();
+    };
+
+    // ============================================================
+    // 入力
+    // ============================================================
+    window.doSave = async function() {
+      const date = document.getElementById('input-date').value;
+      const time = document.getElementById('input-time').value;
+      hideMsg('input-error'); hideMsg('input-success');
+      if (!date || !time) { showMsg('input-error', '日付と時間を入力してください', 'error'); return; }
+
+      const existing = allRecords.find(r => r.date === date);
+      if (existing) {
+        const confirmed = await showConfirmModal(
+          `${date} はすでに ${existing.prayTime} で登録されています。\n上書きしますか？`
+        );
+        if (!confirmed) return;
+      }
+
+      const btn = document.querySelector('#tab-input .btn-primary');
+      btn.innerHTML = '<span class="spinner"></span> 保存中...';
+      btn.disabled = true;
+
+      try {
+        const recordId = `${currentUser.uid}_${date}`;
+        await setDoc(doc(db, 'records', recordId), {
+          uid: currentUser.uid,
+          email: currentUser.email,
+          date, prayTime: time,
+          recordedAt: new Date().toISOString()
+        });
+        showMsg('input-success', existing ? '上書き保存しました！' : '記録しました！', 'success');
+        const idx = allRecords.findIndex(r => r.date === date);
+        if (idx >= 0) { allRecords[idx].prayTime = time; }
+        else { allRecords.push({ date, prayTime: time, uid: currentUser.uid, email: currentUser.email }); }
+        allAdminData = null;
+      } catch(e) {
+        showMsg('input-error', 'エラーが発生しました', 'error');
+      } finally {
+        btn.innerHTML = '保存する';
+        btn.disabled = false;
+      }
+    };
+
+    // ============================================================
+    // 履歴
+    // ============================================================
+    async function loadHistory() {
+      if (!allRecords.length) {
+        document.getElementById('history-loading').style.display = 'flex';
+        document.getElementById('history-content').innerHTML = '';
+        try {
+          const q = query(collection(db, 'records'), where('uid', '==', currentUser.uid), orderBy('date'));
+          const snap = await getDocs(q);
+          allRecords = snap.docs.map(d => d.data());
+        } catch(e) {
+          document.getElementById('history-loading').style.display = 'none';
+          document.getElementById('history-content').innerHTML = '<p style="color:var(--danger);font-size:13px;">読み込みに失敗しました</p>';
+          return;
+        }
+        document.getElementById('history-loading').style.display = 'none';
+      }
+
+      const months = buildMonthList(allRecords);
+      const today = new Date().toLocaleDateString('sv-SE');
+      const currentYM = today.slice(0, 7);
+      if (!currentHistoryMonth || !months.includes(currentHistoryMonth)) {
+        currentHistoryMonth = months.includes(currentYM) ? currentYM : (months[0] || currentYM);
+      }
+
+      const btnContainer = document.getElementById('history-month-btns');
+      btnContainer.innerHTML = '';
+      months.forEach(ym => {
+        const btn = document.createElement('button');
+        btn.className = 'btn-month' + (ym === currentHistoryMonth ? ' active' : '');
+        btn.textContent = monthLabel(ym);
+        btn.onclick = () => { currentHistoryMonth = ym; renderHistory(); };
+        btnContainer.appendChild(btn);
+      });
+      renderHistory();
+    }
+
+    function renderHistory() {
+      document.querySelectorAll('#history-month-btns .btn-month').forEach(btn => {
+        btn.classList.toggle('active', btn.textContent === monthLabel(currentHistoryMonth));
+      });
+
+      const filtered = allRecords.filter(r => getYearMonth(r.date) === currentHistoryMonth);
+      const streakMap = buildStreakMap(allRecords);
+      const todayYM = new Date().toLocaleDateString('sv-SE').slice(0, 7);
+      const isCurrentMonth = currentHistoryMonth === todayYM;
+      const currentMonthNum = currentHistoryMonth.split('-')[1];
+      const showCollectionBox = !NO_COLLECTION_MONTHS.includes(currentMonthNum);
+
+      const collectionDays = filtered.filter(r => parseInt(r.date.split('-')[2]) <= 7);
+      const collectionAchieve = collectionDays.filter(r => isCrownTime(r.prayTime)).length;
+      const collectionTotal = collectionDays.length;
+
+      const collectionSorted = [...collectionDays].sort((a,b) => a.date.localeCompare(b.date));
+      let colStreakNow = 0;
+      for (let i = collectionSorted.length - 1; i >= 0; i--) {
+        if (!isCrownTime(collectionSorted[i].prayTime)) break;
+        if (i < collectionSorted.length - 1) {
+          const diff = (new Date(collectionSorted[i+1].date) - new Date(collectionSorted[i].date)) / 86400000;
+          if (diff !== 1) break;
+        }
+        colStreakNow++;
+      }
+
+      const avgBox = document.getElementById('history-avg');
+      avgBox.style.display = '';
+      const calcAvg = arr => {
+        if (!arr.length) return '－';
+        return minutesToTime(arr.reduce((a,r) => a + timeToMinutes(r.prayTime), 0) / arr.length);
+      };
+      const firstWeek = filtered.filter(r => parseInt(r.date.split('-')[2]) <= 7 && r.prayTime);
+      const allMonth = filtered.filter(r => r.prayTime);
+
+      if (isCurrentMonth) {
+        let boxHtml = '';
+        if (collectionDays.length > 0 && showCollectionBox) {
+          const streakText = colStreakNow >= 2
+            ? `<span style="color:var(--warning);font-weight:700;">${colStreakNow}日連続達成中 🔥</span>`
+            : colStreakNow === 1 ? `<span style="color:var(--warning);">1日達成中</span>`
+            : `<span style="color:var(--text-hint);">－</span>`;
+          boxHtml += `<div style="background:var(--warning-light);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:10px;">
+            <div style="font-size:13px;font-weight:700;color:var(--warning);margin-bottom:6px;">📋 ${parseInt(currentHistoryMonth.split('-')[1])}月 集計期間（1〜7日）</div>
+            <div style="display:flex;gap:1.5rem;flex-wrap:wrap;font-size:13px;margin-bottom:8px;">
+              <div><span style="color:var(--text-muted);">連続達成</span><br>${streakText}</div>
+              <div><span style="color:var(--text-muted);">${collectionTotal}日中</span><br>
+                <span style="font-weight:700;color:var(--warning);">${collectionAchieve}日達成 👑</span></div>
+            </div>
+            <div id="total-streak-box" style="display:none;padding-top:6px;border-top:1px solid rgba(180,83,9,0.2);"></div>
+          </div>`;
+        }
+        boxHtml += `<div class="avg-title">📊 ${monthLabel(currentHistoryMonth)}の平均お祈り開始時間</div>
+          <div class="avg-row">
+            <div class="avg-item"><span class="avg-label">1〜7日の平均</span><span class="avg-val">${calcAvg(firstWeek)}</span></div>
+            <div class="avg-item"><span class="avg-label">当月全体の平均</span><span class="avg-val">${calcAvg(allMonth)}</span></div>
+          </div>`;
+        avgBox.innerHTML = boxHtml;
+
+        // 通算連続表示
+        const latestRecord = [...allRecords].filter(r => r.prayTime).sort((a,b) => b.date.localeCompare(a.date))[0];
+        const currentTotalStreak = latestRecord ? (streakMap[latestRecord.date] || 0) : 0;
+        const totalBox = document.getElementById('total-streak-box');
+        if (totalBox && currentTotalStreak >= 1) {
+          totalBox.style.display = '';
+          totalBox.innerHTML = currentTotalStreak % 7 === 0
+            ? `<span class="streak-badge">通算 ${currentTotalStreak}日連続達成中！🎉</span>`
+            : `<span class="streak-sm" style="font-size:13px;">通算 ${currentTotalStreak}日連続達成中</span>`;
+        }
+      } else {
+        const achieveDays = filtered.filter(r => isCrownTime(r.prayTime)).length;
+        avgBox.innerHTML = `<div class="avg-title">📊 ${monthLabel(currentHistoryMonth)}の記録</div>
+          <div class="avg-row">
+            <div class="avg-item"><span class="avg-label">達成日数</span><span class="avg-val" style="color:var(--warning);">${achieveDays}日 👑</span></div>
+            <div class="avg-item"><span class="avg-label">1〜7日の平均</span><span class="avg-val">${calcAvg(firstWeek)}</span></div>
+            <div class="avg-item"><span class="avg-label">当月全体の平均</span><span class="avg-val">${calcAvg(allMonth)}</span></div>
+          </div>`;
+      }
+
+      const content = document.getElementById('history-content');
+      if (!filtered.length) {
+        avgBox.style.display = 'none';
+        content.innerHTML = '<div class="empty-state">この月の記録がありません</div>';
+        return;
+      }
+
+      const buildColStreakMap = records => {
+        const map = {};
+        const colOnly = records.filter(r => parseInt(r.date.split('-')[2]) <= 7).sort((a,b) => a.date.localeCompare(b.date));
+        const seen = new Set(); const deduped = [];
+        colOnly.forEach(r => { if (!seen.has(r.date)) { seen.add(r.date); deduped.push(r); } });
+        let s = 0;
+        deduped.forEach((r,i) => {
+          if (!isCrownTime(r.prayTime)) { s = 0; }
+          else if (i === 0) { s = 1; }
+          else {
+            const diff = (new Date(r.date) - new Date(deduped[i-1].date)) / 86400000;
+            s = (diff === 1 && isCrownTime(deduped[i-1].prayTime)) ? s + 1 : 1;
+          }
+          map[r.date] = s;
+        });
+        return map;
+      };
+      const colStreakMap = buildColStreakMap(allRecords.filter(r => getYearMonth(r.date) === currentHistoryMonth));
+
+      const sorted = [...filtered].sort((a,b) => b.date.localeCompare(a.date));
+      let html = '<table><thead><tr><th>日付</th><th>お祈り開始時間</th></tr></thead><tbody>';
+      sorted.forEach(r => {
+        const timeVal = r.prayTime || '';
+        const day = parseInt(r.date.split('-')[2]);
+        const inCollection = day >= 1 && day <= 7;
+        const totalS = streakMap[r.date] || 0;
+        const colS = colStreakMap[r.date] || 0;
+
+        const crown = (() => {
+          if (!isCrownTime(timeVal)) return '';
+          if (totalS % 7 === 0 && totalS > 0) return `<span class="crown-lg">👑</span>`;
+          return `<span class="crown-sm">👑</span>`;
+        })();
+
+        const streakLabel = (() => {
+          if (!isCrownTime(timeVal)) return '';
+          if (inCollection && showCollectionBox && colS >= 1) {
+            if (colS % 7 === 0) return `<span class="streak-badge">集計期間${colS}日連続！🎉</span>`;
+            if (colS >= 2) return `<span class="streak-sm">集計期間${colS}日連続</span>`;
+            return `<span class="streak-sm">集計期間1日目</span>`;
+          }
+          if (totalS % 7 === 0 && totalS > 0) return `<span class="streak-badge">連続${totalS}日達成中！🎉</span>`;
+          if (totalS >= 2) return `<span class="streak-sm">連続${totalS}日達成中</span>`;
+          if (totalS === 1) return `<span class="streak-sm">連続1日達成中</span>`;
+          return '';
+        })();
+
+        html += `<tr><td>${formatDate(r.date)}</td><td><span class="time-chip">${timeVal}</span> ${crown}${streakLabel}</td></tr>`;
+      });
+      html += '</tbody></table>';
+      content.innerHTML = html;
+    }
+
+    // ============================================================
+    // 全員タブ（管理者）
+    // ============================================================
+    async function loadAdmin() {
+      if (!allAdminData) {
+        document.getElementById('admin-loading').style.display = 'flex';
+        document.getElementById('admin-content').innerHTML = '';
+        try {
+          const [membersSnap, recordsSnap] = await Promise.all([
+            getDocs(collection(db, 'members')),
+            getDocs(query(collection(db, 'records'), orderBy('date')))
+          ]);
+          const members = {};
+          membersSnap.docs.forEach(d => { members[d.data().email] = { name: d.data().name, church: d.data().church }; });
+          const records = {};
+          const dates = new Set();
+          recordsSnap.docs.forEach(d => {
+            const { email, date, prayTime } = d.data();
+            if (!records[email]) records[email] = {};
+            records[email][date] = prayTime;
+            dates.add(date);
+          });
+          allAdminData = { members, records, dates: [...dates].sort() };
+        } catch(e) {
+          document.getElementById('admin-loading').style.display = 'none';
+          document.getElementById('admin-content').innerHTML = '<p style="color:var(--danger);font-size:13px;">読み込みに失敗しました</p>';
+          return;
+        }
+        document.getElementById('admin-loading').style.display = 'none';
+      }
+
+      const months = [...new Set(allAdminData.dates.map(d => getYearMonth(d)))].filter(Boolean).sort((a,b) => b.localeCompare(a));
+      const todayYM = new Date().toLocaleDateString('sv-SE').slice(0, 7);
+      if (!currentAdminMonth || !months.includes(currentAdminMonth)) {
+        currentAdminMonth = months.includes(todayYM) ? todayYM : (months[0] || todayYM);
+      }
+
+      const btnContainer = document.getElementById('admin-month-btns');
+      btnContainer.innerHTML = '';
+      months.forEach(ym => {
+        const btn = document.createElement('button');
+        btn.className = 'btn-month' + (ym === currentAdminMonth ? ' active' : '');
+        btn.textContent = monthLabel(ym);
+        btn.onclick = () => { currentAdminMonth = ym; renderAdmin(); };
+        btnContainer.appendChild(btn);
+      });
+      renderAdmin();
+    }
+
+    function renderAdmin() {
+      document.querySelectorAll('#admin-month-btns .btn-month').forEach(btn => {
+        btn.classList.toggle('active', btn.textContent === monthLabel(currentAdminMonth));
+      });
+
+      const monthDates = allAdminData.dates.filter(d => getYearMonth(d) === currentAdminMonth).sort();
+      const content = document.getElementById('admin-content');
+      if (!monthDates.length) { content.innerHTML = '<div class="empty-state">この月の記録がありません</div>'; return; }
+
+      const [adminY, adminM] = currentAdminMonth.split('-');
+      const firstWeekDates = monthDates.filter(d => parseInt(d.split('-')[2]) <= 7);
+
+      let summaryHtml = '';
+      if (firstWeekDates.length > 0) {
+        const rowsWithAvg = Object.entries(allAdminData.members).map(([email, info]) => {
+          const times = firstWeekDates.map(d => (allAdminData.records[email] || {})[d]).filter(t => t);
+          const mins = times.map(t => timeToMinutes(t)).filter(v => v !== null);
+          const avg = mins.length ? minutesToTime(mins.reduce((a,b) => a+b,0) / mins.length) : null;
+          const crownDays = times.filter(t => isCrownTime(t)).length;
+          return { name: info.name, church: info.church, avg, count: times.length, crownDays };
+        });
+        rowsWithAvg.sort((a,b) => {
+          if (!a.avg && !b.avg) return 0;
+          if (!a.avg) return 1; if (!b.avg) return -1;
+          return a.avg.localeCompare(b.avg);
+        });
+
+        summaryHtml = `<div style="margin-bottom:1rem;">
+          <div style="font-size:13px;font-weight:700;color:var(--text-muted);margin-bottom:8px;">📊 ${adminY}年${parseInt(adminM)}月 1〜7日 平均お祈り開始時間</div>
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead><tr>
+            <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);">名前</th>
+            <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);">教会</th>
+            <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);">平均時間</th>
+            <th style="text-align:center;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);">入力日数</th>
+            <th style="text-align:center;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);">👑達成日数</th>
+          </tr></thead><tbody>`;
+        rowsWithAvg.forEach(row => {
+          const avgChip = row.avg
+            ? `<span class="time-chip">${row.avg}</span>${isCrownTime(row.avg) ? ' 👑' : ''}`
+            : '<span class="dash">－</span>';
+          const crownCell = row.crownDays > 0
+            ? `<span style="font-weight:700;color:var(--warning);">${row.crownDays}日 👑</span>`
+            : `<span style="color:var(--text-hint);">0日</span>`;
+          summaryHtml += `<tr>
+            <td style="padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap;">${row.name}</td>
+            <td style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);white-space:nowrap;">${row.church}</td>
+            <td style="padding:6px 8px;border-bottom:1px solid var(--border);">${avgChip}</td>
+            <td style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);text-align:center;">${row.count}日</td>
+            <td style="padding:6px 8px;border-bottom:1px solid var(--border);text-align:center;">${crownCell}</td>
+          </tr>`;
+        });
+        summaryHtml += '</tbody></table></div>';
+      }
+
+      let html = '<table class="admin-table"><thead><tr><th>名前</th><th>教会</th>';
+      monthDates.forEach(d => { html += `<th>${parseInt(d.split('-')[2])}日</th>`; });
+      html += '</tr></thead><tbody>';
+
+      Object.entries(allAdminData.members).forEach(([email, info]) => {
+        const allPersonRecords = allAdminData.dates.map(d => ({ date: d, prayTime: (allAdminData.records[email] || {})[d] || '' }));
+        const streakMap = buildStreakMap(allPersonRecords);
+        html += `<tr><td style="white-space:nowrap;">${info.name}</td><td style="white-space:nowrap;color:var(--text-muted);">${info.church}</td>`;
+        monthDates.forEach(d => {
+          const t = (allAdminData.records[email] || {})[d] || '';
+          if (!t) { html += `<td><span class="dash">-</span></td>`; }
+          else {
+            const s = streakMap[d] || 0;
+            const crown = isCrownTime(t) ? (s % 7 === 0 && s > 0 ? '👑' : '<span style="font-size:12px;">👑</span>') : '';
+            html += `<td><span class="time-chip" style="font-size:11px;">${t}</span>${crown}</td>`;
+          }
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      content.innerHTML = summaryHtml + html;
+    }
+  </script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -24,7 +576,7 @@
     .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem; }
     .card h2 { font-size: 15px; font-weight: 700; margin-bottom: 1rem; }
     label { display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 4px; }
-    input[type="email"], input[type="text"], input[type="date"], input[type="time"] {
+    input[type="text"], input[type="date"], input[type="time"] {
       width: 100%; padding: 10px 12px; border: 1px solid var(--border-strong);
       border-radius: var(--radius-sm); font-size: 15px; font-family: inherit;
       background: var(--surface); color: var(--text); margin-bottom: 12px;
@@ -36,8 +588,9 @@
     button:disabled { opacity: 0.5; cursor: not-allowed; }
     .btn-primary { background: var(--accent); color: #fff; width: 100%; }
     .btn-primary:hover:not(:disabled) { opacity: 0.9; }
+    .btn-google { background: #fff; color: #333; border: 1px solid var(--border-strong); width: 100%; font-size: 15px; gap: 10px; padding: 12px 16px; }
+    .btn-google:hover { background: #f8f8f8; }
     .btn-ghost { background: transparent; color: var(--text-muted); border: 1px solid var(--border-strong); font-size: 13px; padding: 6px 12px; }
-    .btn-ghost:hover { background: var(--bg); }
     .btn-month { background: var(--bg); color: var(--text-muted); border: 1px solid var(--border); font-size: 12px; padding: 5px 10px; border-radius: 20px; cursor: pointer; }
     .btn-month.active { background: var(--accent); color: #fff; border-color: var(--accent); }
     .msg { font-size: 13px; padding: 8px 12px; border-radius: var(--radius-sm); margin-top: 8px; display: none; }
@@ -74,15 +627,16 @@
     .admin-table th:nth-child(2), .admin-table td:nth-child(2) { text-align: left; }
     .month-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 1rem; }
     .avg-box { background: var(--accent-light); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 1rem; font-size: 13px; }
-    .avg-box .avg-title { color: var(--text-muted); margin-bottom: 6px; font-weight: 500; }
-    .avg-box .avg-row { display: flex; gap: 1.5rem; flex-wrap: wrap; }
-    .avg-box .avg-item { display: flex; flex-direction: column; }
-    .avg-box .avg-label { font-size: 11px; color: var(--text-muted); }
-    .avg-box .avg-val { font-size: 16px; font-weight: 700; color: var(--accent); }
+    .avg-title { color: var(--text-muted); margin-bottom: 6px; font-weight: 500; }
+    .avg-row { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+    .avg-item { display: flex; flex-direction: column; }
+    .avg-label { font-size: 11px; color: var(--text-muted); }
+    .avg-val { font-size: 16px; font-weight: 700; color: var(--accent); }
     .crown-sm { font-size: 15px; vertical-align: middle; }
     .crown-lg { font-size: 24px; vertical-align: middle; }
     .streak-badge { font-size: 11px; font-weight: 700; color: var(--warning); margin-left: 2px; }
     .streak-sm { font-size: 11px; color: var(--text-muted); margin-left: 2px; }
+    .google-icon { width: 20px; height: 20px; }
   </style>
 </head>
 <body>
@@ -96,12 +650,12 @@
   <div id="screen-login" class="screen active">
     <div class="card">
       <h2>ログイン</h2>
-      <label for="login-email">Gmailアドレス</label>
-      <input type="email" id="login-email" placeholder="your@gmail.com" />
-      <button class="btn-primary" id="login-btn" onclick="doLogin()">ログイン</button>
+      <p style="font-size:14px;color:var(--text-muted);margin-bottom:1rem;">Googleアカウントでログインしてください</p>
+      <button class="btn-google" id="login-btn" onclick="doGoogleLogin()">
+        <svg class="google-icon" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.36-8.16 2.36-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        Googleでログイン
+      </button>
       <div class="msg msg-error" id="login-error"></div>
-      <p id="login-hint" style="font-size:12px; color:var(--text-muted); margin-top:8px;"></p>
-      <p style="font-size:12px; color:var(--text-hint); margin-top:12px;">※ 実際の運用ではGoogle OAuthに置き換えます</p>
     </div>
   </div>
 
@@ -109,10 +663,10 @@
   <div id="screen-register" class="screen">
     <div class="card">
       <h2>初回登録</h2>
-      <p style="font-size:13px; color:var(--text-muted); margin-bottom:1rem;">お名前と教会名を登録してください</p>
-      <label for="reg-name">お名前</label>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:1rem;">お名前と教会名を登録してください</p>
+      <label>お名前</label>
       <input type="text" id="reg-name" placeholder="山田太郎" />
-      <label for="reg-church">教会名</label>
+      <label>教会名</label>
       <input type="text" id="reg-church" placeholder="○○教会" />
       <button class="btn-primary" onclick="doRegister()">登録する</button>
       <div class="msg msg-error" id="reg-error"></div>
@@ -122,7 +676,7 @@
 
   <!-- メイン画面 -->
   <div id="screen-main" class="screen">
-    <div class="card" style="padding:0.75rem 1rem; margin-bottom:0.75rem;">
+    <div class="card" style="padding:0.75rem 1rem;margin-bottom:0.75rem;">
       <div class="user-bar">
         <div class="user-avatar" id="user-avatar">-</div>
         <div class="user-info">
@@ -144,11 +698,11 @@
     <div id="tab-input" class="tab-content active">
       <div class="card">
         <h2>お祈り開始時間を記録</h2>
-        <label for="input-date">日付</label>
+        <label>日付</label>
         <input type="date" id="input-date" />
-        <label for="input-time">お祈り開始時間</label>
+        <label>お祈り開始時間</label>
         <input type="time" id="input-time" />
-        <button class="btn-primary" onclick="doSave.call(this)">保存する</button>
+        <button class="btn-primary" onclick="doSave()">保存する</button>
         <div class="msg msg-error" id="input-error"></div>
         <div class="msg msg-success" id="input-success"></div>
       </div>
@@ -178,656 +732,14 @@
 </div>
 
 <!-- 確認モーダル -->
-<div id="confirm-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center; padding:1rem;">
-  <div style="background:#fff; border-radius:12px; padding:1.5rem; max-width:360px; width:100%; box-shadow:0 8px 32px rgba(0,0,0,0.2);">
-    <p id="modal-message" style="font-size:14px; color:#1a1a1a; margin-bottom:1.25rem; line-height:1.6; white-space:pre-line;"></p>
-    <div style="display:flex; gap:8px;">
-      <button id="modal-cancel" style="flex:1; padding:10px; border-radius:6px; border:1px solid #ccc; background:#f5f5f5; color:#666; font-size:14px; font-family:inherit; cursor:pointer;">キャンセル</button>
-      <button id="modal-ok" style="flex:1; padding:10px; border-radius:6px; border:none; background:#2563eb; color:#fff; font-size:14px; font-weight:600; font-family:inherit; cursor:pointer;">上書きする</button>
+<div id="confirm-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;padding:1rem;">
+  <div style="background:#fff;border-radius:12px;padding:1.5rem;max-width:360px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+    <p id="modal-message" style="font-size:14px;color:#1a1a1a;margin-bottom:1.25rem;line-height:1.6;white-space:pre-line;"></p>
+    <div style="display:flex;gap:8px;">
+      <button id="modal-cancel" style="flex:1;padding:10px;border-radius:6px;border:1px solid #ccc;background:#f5f5f5;color:#666;font-size:14px;font-family:inherit;cursor:pointer;">キャンセル</button>
+      <button id="modal-ok" style="flex:1;padding:10px;border-radius:6px;border:none;background:#2563eb;color:#fff;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer;">上書きする</button>
     </div>
   </div>
 </div>
-
-<script>
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbzNYecvvNX21ZCtePWC2MnSAZQ5jCkpbXdQ5ddmo9-bn9v-aTRyg7LhuFiQDfTdU0G8/exec';
-const ADMIN_EMAIL = 'korosuke19750223@gmail.com';
-let currentUser = null;
-let allRecords = []; // 全件キャッシュ
-let allAdminData = null; // 管理者データキャッシュ
-let currentHistoryMonth = null;
-let currentAdminMonth = null;
-
-// ページ読み込み時にメアドを復元
-window.addEventListener('DOMContentLoaded', () => {
-  const saved = localStorage.getItem('cgm_email');
-  if (saved) {
-    document.getElementById('login-email').value = saved;
-    document.getElementById('login-hint').textContent = '前回のメールアドレスを復元しました';
-  }
-});
-
-function showScreen(id) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
-}
-
-function showMsg(id, text, type) {
-  const el = document.getElementById(id);
-  el.textContent = text;
-  el.className = 'msg show msg-' + type;
-  if (type === 'success') setTimeout(() => el.classList.remove('show'), 3000);
-}
-
-function hideMsg(id) {
-  const el = document.getElementById(id);
-  if (el) el.classList.remove('show');
-}
-
-function gasCall(action, data) {
-  return new Promise((resolve, reject) => {
-    const cbName = 'cb_' + Date.now() + '_' + Math.random().toString(36).slice(2);
-    const params = new URLSearchParams({ action, callback: cbName, ...data });
-    const script = document.createElement('script');
-    const timer = setTimeout(() => { cleanup(); reject(new Error('タイムアウトしました')); }, 15000);
-    function cleanup() { clearTimeout(timer); delete window[cbName]; if (script.parentNode) script.parentNode.removeChild(script); }
-    window[cbName] = (result) => { cleanup(); resolve(result); };
-    script.src = GAS_URL + '?' + params.toString();
-    script.onerror = () => { cleanup(); reject(new Error('接続に失敗しました')); };
-    document.head.appendChild(script);
-  });
-}
-
-// ============================================================
-// 認証
-// ============================================================
-
-async function doLogin() {
-  const email = document.getElementById('login-email').value.trim();
-  hideMsg('login-error');
-  if (!email) { showMsg('login-error', 'メールアドレスを入力してください', 'error'); return; }
-  if (!email.includes('@')) { showMsg('login-error', '正しいメールアドレスを入力してください', 'error'); return; }
-  const btn = document.getElementById('login-btn');
-  btn.innerHTML = '<span class="spinner"></span> 確認中...'; btn.disabled = true;
-  try {
-    const result = await gasCall('getMember', { email });
-    if (!result.success) { showMsg('login-error', result.error || 'エラーが発生しました', 'error'); return; }
-    currentUser = { email };
-    localStorage.setItem('cgm_email', email);
-    if (result.member) {
-      currentUser.name = result.member.name;
-      currentUser.church = result.member.church;
-      enterMain();
-    } else {
-      showScreen('screen-register');
-    }
-  } catch(e) {
-    showMsg('login-error', '接続に失敗しました', 'error');
-  } finally {
-    btn.innerHTML = 'ログイン'; btn.disabled = false;
-  }
-}
-
-async function doRegister() {
-  const name = document.getElementById('reg-name').value.trim();
-  const church = document.getElementById('reg-church').value.trim();
-  hideMsg('reg-error'); hideMsg('reg-success');
-  if (!name || !church) { showMsg('reg-error', '全項目を入力してください', 'error'); return; }
-  try {
-    const result = await gasCall('registerMember', { email: currentUser.email, name, church });
-    if (!result.success) { showMsg('reg-error', result.error, 'error'); return; }
-    currentUser.name = name; currentUser.church = church;
-    showMsg('reg-success', '登録しました！', 'success');
-    setTimeout(() => enterMain(), 800);
-  } catch(e) { showMsg('reg-error', 'エラーが発生しました', 'error'); }
-}
-
-function enterMain() {
-  showScreen('screen-main');
-  document.getElementById('main-name').textContent = currentUser.name;
-  document.getElementById('main-church').textContent = currentUser.church;
-  document.getElementById('user-avatar').textContent = currentUser.name.charAt(0);
-  const isAdmin = currentUser.email === ADMIN_EMAIL;
-  document.getElementById('admin-badge').style.display = isAdmin ? '' : 'none';
-  document.getElementById('admin-tab-btn').style.display = isAdmin ? '' : 'none';
-  const today = new Date().toLocaleDateString('sv-SE');
-  document.getElementById('input-date').value = today;
-  allRecords = []; allAdminData = null;
-  showTab('input');
-  // ログイン直後にバックグラウンドで全レコードを先読み
-  prefetchRecords();
-}
-
-async function prefetchRecords() {
-  try {
-    const result = await gasCall('getMyRecords', { email: currentUser.email });
-    if (result.success) {
-      allRecords = result.records || [];
-    }
-  } catch(e) {
-    // 先読み失敗は無視（保存時に再取得）
-  }
-}
-
-function doLogout() {
-  currentUser = null;
-  hideMsg('login-error');
-  showScreen('screen-login');
-}
-
-function showTab(tab) {
-  ['input','history','admin'].forEach(t => {
-    document.getElementById('tab-' + t).classList.toggle('active', t === tab);
-  });
-  document.querySelectorAll('.tab').forEach(btn => {
-    btn.classList.toggle('active', btn.getAttribute('onclick') === `showTab('${tab}')`);
-  });
-  if (tab === 'history') loadHistory();
-  if (tab === 'admin') loadAdmin();
-}
-
-// ============================================================
-// 入力
-// ============================================================
-
-async function doSave() {
-  const date = document.getElementById('input-date').value;
-  const time = document.getElementById('input-time').value;
-  hideMsg('input-error'); hideMsg('input-success');
-  if (!date || !time) { showMsg('input-error', '日付と時間を入力してください', 'error'); return; }
-
-  // キャッシュで既存チェック（GAS問い合わせなし → 高速）
-  const existing = allRecords.find(r => r.date === date);
-  if (existing) {
-    const confirmed = await showConfirmModal(
-      `${date} はすでに ${existing.prayTime} で登録されています。
-上書きしますか？`
-    );
-    if (!confirmed) return;
-  }
-
-  // 保存ボタンをローディング表示（体感速度アップ）
-  const btn = document.querySelector('#tab-input .btn-primary');
-  const origText = btn.innerHTML;
-  btn.innerHTML = '<span class="spinner"></span> 保存中...';
-  btn.disabled = true;
-
-  try {
-    const result = await gasCall('saveRecord', { email: currentUser.email, date, prayTime: time });
-    if (!result.success) { showMsg('input-error', result.error, 'error'); return; }
-    showMsg('input-success', result.updated ? '上書き保存しました！' : '記録しました！', 'success');
-    // キャッシュを更新（再取得なし → 高速）
-    const idx = allRecords.findIndex(r => r.date === date);
-    if (idx >= 0) {
-      allRecords[idx].prayTime = time;
-    } else {
-      allRecords.push({ date, prayTime: time });
-    }
-    allAdminData = null;
-  } catch(e) {
-    showMsg('input-error', 'エラーが発生しました', 'error');
-  } finally {
-    btn.innerHTML = origText;
-    btn.disabled = false;
-  }
-}
-
-function showConfirmModal(message) {
-  return new Promise((resolve) => {
-    document.getElementById('modal-message').textContent = message;
-    document.getElementById('confirm-modal').style.display = 'flex';
-    document.getElementById('modal-ok').onclick = () => {
-      document.getElementById('confirm-modal').style.display = 'none';
-      resolve(true);
-    };
-    document.getElementById('modal-cancel').onclick = () => {
-      document.getElementById('confirm-modal').style.display = 'none';
-      resolve(false);
-    };
-  });
-}
-
-// ============================================================
-// ユーティリティ
-// ============================================================
-
-function isCrownTime(t) {
-  if (!t) return false;
-  const [h, m] = t.split(':').map(Number);
-  return h < 3 || (h === 3 && m === 0);
-}
-
-function timeToMinutes(t) {
-  if (!t) return null;
-  const [h, m] = t.split(':').map(Number);
-  return h * 60 + m;
-}
-
-function minutesToTime(mins) {
-  const h = Math.floor(mins / 60) % 24;
-  const m = Math.round(mins % 60);
-  return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
-}
-
-function getYearMonth(dateStr) {
-  return dateStr ? dateStr.slice(0, 7) : '';
-}
-
-function formatDate(d) {
-  const parts = d.split('-');
-  return parts.length === 3 ? parts[0] + '/' + parts[1] + '/' + parts[2] : d;
-}
-
-// 連続達成日数マップを作成（重複日付は最初の1件のみ使用）
-function buildStreakMap(records) {
-  // 重複除去：同じ日付は最初のレコードのみ使用
-  const seen = new Set();
-  const deduped = [];
-  [...records].sort((a, b) => a.date.localeCompare(b.date)).forEach(r => {
-    if (!seen.has(r.date)) { seen.add(r.date); deduped.push(r); }
-  });
-
-  const streakMap = {};
-  let streak = 0;
-  deduped.forEach((r, i) => {
-    if (!isCrownTime(r.prayTime)) {
-      streak = 0;
-    } else {
-      if (i === 0) {
-        streak = 1;
-      } else {
-        const prev = deduped[i - 1];
-        const diff = (new Date(r.date) - new Date(prev.date)) / (1000 * 60 * 60 * 24);
-        streak = (diff === 1 && isCrownTime(prev.prayTime)) ? streak + 1 : 1;
-      }
-    }
-    streakMap[r.date] = streak;
-  });
-  return streakMap;
-}
-
-// 月リストを生成（新しい順）
-function buildMonthList(records) {
-  const months = [...new Set(records.map(r => getYearMonth(r.date)))].filter(Boolean);
-  months.sort((a, b) => b.localeCompare(a));
-  return months;
-}
-
-// 月表示ラベル
-function monthLabel(ym) {
-  const [y, m] = ym.split('-');
-  return y + '年' + parseInt(m) + '月';
-}
-
-// ============================================================
-// 履歴タブ
-// ============================================================
-
-async function loadHistory() {
-  if (!allRecords.length) {
-    document.getElementById('history-loading').style.display = 'flex';
-    document.getElementById('history-content').innerHTML = '';
-    document.getElementById('history-avg').style.display = 'none';
-    try {
-      const result = await gasCall('getMyRecords', { email: currentUser.email });
-      document.getElementById('history-loading').style.display = 'none';
-      if (!result.success) { document.getElementById('history-content').innerHTML = `<p style="color:var(--danger);font-size:13px;">${result.error}</p>`; return; }
-      allRecords = result.records || [];
-    } catch(e) {
-      document.getElementById('history-loading').style.display = 'none';
-      document.getElementById('history-content').innerHTML = '<p style="color:var(--danger);font-size:13px;">読み込みに失敗しました</p>';
-      return;
-    }
-  }
-
-  const months = buildMonthList(allRecords);
-  const today = new Date().toLocaleDateString('sv-SE');
-  const currentYM = today.slice(0, 7);
-  if (!currentHistoryMonth || !months.includes(currentHistoryMonth)) {
-    currentHistoryMonth = months.includes(currentYM) ? currentYM : (months[0] || currentYM);
-  }
-
-  // 月ボタン描画
-  const btnContainer = document.getElementById('history-month-btns');
-  btnContainer.innerHTML = '';
-  months.forEach(ym => {
-    const btn = document.createElement('button');
-    btn.className = 'btn-month' + (ym === currentHistoryMonth ? ' active' : '');
-    btn.textContent = monthLabel(ym);
-    btn.onclick = () => { currentHistoryMonth = ym; renderHistory(); };
-    btnContainer.appendChild(btn);
-  });
-
-  renderHistory();
-}
-
-function renderHistory() {
-  // 月ボタンのアクティブ更新
-  document.querySelectorAll('#history-month-btns .btn-month').forEach(btn => {
-    btn.classList.toggle('active', btn.textContent === monthLabel(currentHistoryMonth));
-  });
-
-  const filtered = allRecords.filter(r => getYearMonth(r.date) === currentHistoryMonth);
-  const streakMap = buildStreakMap(allRecords); // 全件で連続計算
-
-  const content = document.getElementById('history-content');
-  if (!filtered.length) {
-    document.getElementById('history-avg').style.display = 'none';
-    content.innerHTML = '<div class="empty-state">この月の記録がありません</div>';
-    return;
-  }
-
-  // 当月かどうか
-  const todayYM = new Date().toLocaleDateString('sv-SE').slice(0, 7);
-  const isCurrentMonth = currentHistoryMonth === todayYM;
-
-  // 集計期間（1〜7日）の累計達成数・連続達成数（当月のみ）
-  const collectionDays = filtered.filter(r => {
-    const day = parseInt(r.date.split('-')[2]);
-    return day >= 1 && day <= 7;
-  });
-  const collectionAchieve = collectionDays.filter(r => isCrownTime(r.prayTime)).length;
-  const collectionTotal = collectionDays.length;
-
-  // 集計期間の連続達成数（当月1〜7日内での連続、前月またぎは考慮しない）
-  const collectionSorted = [...collectionDays].sort((a, b) => a.date.localeCompare(b.date));
-  let colCurStreak = 0, colMaxStreak = 0;
-  collectionSorted.forEach((r, i) => {
-    if (!isCrownTime(r.prayTime)) { colCurStreak = 0; return; }
-    if (i === 0) { colCurStreak = 1; }
-    else {
-      const diff = (new Date(r.date) - new Date(collectionSorted[i-1].date)) / 86400000;
-      colCurStreak = (diff === 1 && isCrownTime(collectionSorted[i-1].prayTime)) ? colCurStreak + 1 : 1;
-    }
-    colMaxStreak = Math.max(colMaxStreak, colCurStreak);
-  });
-  // 現在進行中の集計期間連続（最後のレコードから逆算）
-  let colStreakNow = 0;
-  for (let i = collectionSorted.length - 1; i >= 0; i--) {
-    if (!isCrownTime(collectionSorted[i].prayTime)) break;
-    if (i < collectionSorted.length - 1) {
-      const diff = (new Date(collectionSorted[i+1].date) - new Date(collectionSorted[i].date)) / 86400000;
-      if (diff !== 1) break;
-    }
-    colStreakNow++;
-  }
-
-  // サマリーボックス表示
-  const avgBox = document.getElementById('history-avg');
-  avgBox.style.display = '';
-
-  if (isCurrentMonth) {
-    // 当月：集計期間ボックス + 平均
-    const [y, mo] = currentHistoryMonth.split('-');
-    const firstWeek = filtered.filter(r => parseInt(r.date.split('-')[2]) <= 7 && r.prayTime);
-    const allMonth = filtered.filter(r => r.prayTime);
-    const calcAvg = (arr) => {
-      if (!arr.length) return '－';
-      return minutesToTime(arr.reduce((a, r) => a + timeToMinutes(r.prayTime), 0) / arr.length);
-    };
-
-    let boxHtml = '';
-    // 集計期間ボックス（1〜7日分がある場合のみ）
-    if (collectionDays.length > 0) {
-      const streakText = colStreakNow >= 2
-        ? `<span style="color:var(--warning);font-weight:700;">${colStreakNow}日連続達成中 🔥</span>`
-        : colStreakNow === 1
-        ? `<span style="color:var(--warning);">1日達成中</span>`
-        : `<span style="color:var(--text-hint);">－</span>`;
-      boxHtml += `
-        <div style="background:var(--warning-light); border-radius:var(--radius-sm); padding:10px 14px; margin-bottom:10px;">
-          <div style="font-size:13px; font-weight:700; color:var(--warning); margin-bottom:6px;">
-            📋 ${parseInt(mo)}月 集計期間（1〜7日）
-          </div>
-          <div style="display:flex; gap:1.5rem; flex-wrap:wrap; font-size:13px; margin-bottom:8px;">
-            <div><span style="color:var(--text-muted);">連続達成</span><br>${streakText}</div>
-            <div><span style="color:var(--text-muted);">${collectionTotal}日中</span><br>
-              <span style="font-weight:700; color:var(--warning);">${collectionAchieve}日達成 👑</span></div>
-          </div>
-          <div id="total-streak-box" style="display:none; padding-top:6px; border-top:1px solid rgba(180,83,9,0.2);"></div>
-        </div>`;
-    }
-    // 平均ボックス
-    boxHtml += `
-      <div class="avg-title">📊 ${monthLabel(currentHistoryMonth)}の平均お祈り開始時間</div>
-      <div class="avg-row">
-        <div class="avg-item"><span class="avg-label">1〜7日の平均</span><span class="avg-val">${calcAvg(firstWeek)}</span></div>
-        <div class="avg-item"><span class="avg-label">当月全体の平均</span><span class="avg-val">${calcAvg(allMonth)}</span></div>
-      </div>`;
-    avgBox.innerHTML = boxHtml;
-  } else {
-    // 前月以前：達成日数サマリー
-    const achieveDays = filtered.filter(r => isCrownTime(r.prayTime)).length;
-    const [y, mo] = currentHistoryMonth.split('-');
-    const firstWeek = filtered.filter(r => parseInt(r.date.split('-')[2]) <= 7 && r.prayTime);
-    const allMonth = filtered.filter(r => r.prayTime);
-    const calcAvg = (arr) => {
-      if (!arr.length) return '－';
-      return minutesToTime(arr.reduce((a, r) => a + timeToMinutes(r.prayTime), 0) / arr.length);
-    };
-    avgBox.innerHTML = `
-      <div class="avg-title">📊 ${monthLabel(currentHistoryMonth)}の記録</div>
-      <div class="avg-row">
-        <div class="avg-item">
-          <span class="avg-label">達成日数</span>
-          <span class="avg-val" style="color:var(--warning);">${achieveDays}日 👑</span>
-        </div>
-        <div class="avg-item">
-          <span class="avg-label">1〜7日の平均</span>
-          <span class="avg-val">${calcAvg(firstWeek)}</span>
-        </div>
-        <div class="avg-item">
-          <span class="avg-label">当月全体の平均</span>
-          <span class="avg-val">${calcAvg(allMonth)}</span>
-        </div>
-      </div>`;
-  }
-
-  // 集計期間（1〜7日）内の連続日数マップ（当月のみ、月内でリセット）
-  const buildColStreakMap = (records) => {
-    const map = {};
-    const colOnly = records
-      .filter(r => parseInt(r.date.split('-')[2]) <= 7)
-      .sort((a, b) => a.date.localeCompare(b.date));
-    // 重複除去
-    const seen = new Set();
-    const deduped = [];
-    colOnly.forEach(r => { if (!seen.has(r.date)) { seen.add(r.date); deduped.push(r); } });
-    let s = 0;
-    deduped.forEach((r, i) => {
-      if (!isCrownTime(r.prayTime)) { s = 0; }
-      else if (i === 0) { s = 1; }
-      else {
-        const diff = (new Date(r.date) - new Date(deduped[i-1].date)) / 86400000;
-        s = (diff === 1 && isCrownTime(deduped[i-1].prayTime)) ? s + 1 : 1;
-      }
-      map[r.date] = s;
-    });
-    return map;
-  };
-  const colStreakMap = buildColStreakMap(allRecords.filter(r => getYearMonth(r.date) === currentHistoryMonth));
-
-  // 通算連続（全件）の現在値を取得
-  const latestRecord = [...allRecords].filter(r => r.prayTime).sort((a,b) => b.date.localeCompare(a.date))[0];
-  const currentTotalStreak = latestRecord ? (streakMap[latestRecord.date] || 0) : 0;
-
-  // 通算連続を集計期間ボックス内に表示（当月のみ）
-  if (isCurrentMonth && currentTotalStreak >= 1) {
-    const totalStreakEl = document.getElementById('total-streak-box');
-    if (totalStreakEl) {
-      totalStreakEl.style.display = '';
-      const totalText = currentTotalStreak % 7 === 0
-        ? `<span class="streak-badge">通算 ${currentTotalStreak}日連続達成中！🎉</span>`
-        : `<span class="streak-sm" style="font-size:13px;">通算 ${currentTotalStreak}日連続達成中</span>`;
-      totalStreakEl.innerHTML = totalText;
-    }
-  }
-
-  const sorted = [...filtered].sort((a, b) => b.date.localeCompare(a.date));
-  let html = '<table><thead><tr><th>日付</th><th>お祈り開始時間</th></tr></thead><tbody>';
-  sorted.forEach(r => {
-    const timeVal = r.prayTime || '';
-    const day = parseInt(r.date.split('-')[2]);
-    const inCollection = day >= 1 && day <= 7;
-    const colS = colStreakMap[r.date] || 0;
-
-    const crown = (() => {
-      if (!isCrownTime(timeVal)) return '';
-      if (inCollection && colS % 7 === 0 && colS > 0) return `<span class="crown-lg">👑</span>`;
-      return `<span class="crown-sm">👑</span>`;
-    })();
-
-    const streakLabel = (() => {
-      if (!isCrownTime(timeVal)) return '';
-      // 集計期間内のみ連続日数表示
-      if (inCollection && colS >= 1) {
-        if (colS % 7 === 0) return `<span class="streak-badge">集計期間${colS}日連続！🎉</span>`;
-        if (colS >= 2) return `<span class="streak-sm">集計期間${colS}日連続</span>`;
-        return `<span class="streak-sm">集計期間1日目</span>`;
-      }
-      return '';
-    })();
-
-    html += `<tr><td>${formatDate(r.date)}</td><td><span class="time-chip">${timeVal}</span> ${crown}${streakLabel}</td></tr>`;
-  });
-  html += '</tbody></table>';
-  content.innerHTML = html;
-}
-
-// ============================================================
-// 全員タブ
-// ============================================================
-
-async function loadAdmin() {
-  if (!allAdminData) {
-    document.getElementById('admin-loading').style.display = 'flex';
-    document.getElementById('admin-content').innerHTML = '';
-    try {
-      const result = await gasCall('getAllRecords', { email: currentUser.email });
-      document.getElementById('admin-loading').style.display = 'none';
-      if (!result.success) { document.getElementById('admin-content').innerHTML = `<p style="color:var(--danger);font-size:13px;">${result.error}</p>`; return; }
-      allAdminData = result;
-    } catch(e) {
-      document.getElementById('admin-loading').style.display = 'none';
-      document.getElementById('admin-content').innerHTML = '<p style="color:var(--danger);font-size:13px;">読み込みに失敗しました</p>';
-      return;
-    }
-  }
-
-  const dates = (allAdminData.dates || []).map(d => String(d));
-  const months = [...new Set(dates.map(d => getYearMonth(d)))].filter(Boolean).sort((a,b) => b.localeCompare(a));
-  const today = new Date().toLocaleDateString('sv-SE');
-  const currentYM = today.slice(0, 7);
-  if (!currentAdminMonth || !months.includes(currentAdminMonth)) {
-    currentAdminMonth = months.includes(currentYM) ? currentYM : (months[0] || currentYM);
-  }
-
-  // 月ボタン描画
-  const btnContainer = document.getElementById('admin-month-btns');
-  btnContainer.innerHTML = '';
-  months.forEach(ym => {
-    const btn = document.createElement('button');
-    btn.className = 'btn-month' + (ym === currentAdminMonth ? ' active' : '');
-    btn.textContent = monthLabel(ym);
-    btn.onclick = () => { currentAdminMonth = ym; renderAdmin(); };
-    btnContainer.appendChild(btn);
-  });
-
-  renderAdmin();
-}
-
-function renderAdmin() {
-  document.querySelectorAll('#admin-month-btns .btn-month').forEach(btn => {
-    btn.classList.toggle('active', btn.textContent === monthLabel(currentAdminMonth));
-  });
-
-  const dates = (allAdminData.dates || []).map(d => String(d));
-  const monthDates = dates.filter(d => getYearMonth(d) === currentAdminMonth).sort();
-
-  const content = document.getElementById('admin-content');
-  if (!monthDates.length) { content.innerHTML = '<div class="empty-state">この月の記録がありません</div>'; return; }
-
-  // 6月の場合は1〜7日平均ボックスを表示
-  const [adminY, adminM] = currentAdminMonth.split('-');
-  const firstWeekDates = monthDates.filter(d => parseInt(d.split('-')[2]) <= 7);
-
-  let summaryHtml = '';
-  if (firstWeekDates.length > 0) {
-    summaryHtml += `<div style="margin-bottom:1rem;">`;
-    summaryHtml += `<div style="font-size:13px; font-weight:700; color:var(--text-muted); margin-bottom:8px;">📊 ${adminY}年${parseInt(adminM)}月 1〜7日 平均お祈り開始時間</div>`;
-    summaryHtml += `<table style="width:100%; border-collapse:collapse; font-size:13px;">`;
-    summaryHtml += `<thead><tr>
-      <th style="text-align:left; padding:6px 8px; border-bottom:1px solid var(--border); color:var(--text-muted);">名前</th>
-      <th style="text-align:left; padding:6px 8px; border-bottom:1px solid var(--border); color:var(--text-muted);">教会</th>
-      <th style="text-align:left; padding:6px 8px; border-bottom:1px solid var(--border); color:var(--text-muted);">平均時間</th>
-      <th style="text-align:center; padding:6px 8px; border-bottom:1px solid var(--border); color:var(--text-muted);">入力日数</th>
-      <th style="text-align:center; padding:6px 8px; border-bottom:1px solid var(--border); color:var(--text-muted);">👑達成日数</th>
-    </tr></thead><tbody>`;
-
-    // 平均でソート用に先に計算
-    const rowsWithAvg = allAdminData.rows.map(row => {
-      const times = firstWeekDates.map(d => (row.records || {})[d]).filter(t => t);
-      const mins = times.map(t => timeToMinutes(t)).filter(v => v !== null);
-      const avg = mins.length ? minutesToTime(mins.reduce((a,b) => a+b,0) / mins.length) : null;
-      const crownDays = times.filter(t => isCrownTime(t)).length;
-      return { ...row, avg, count: times.length, crownDays };
-    });
-    rowsWithAvg.sort((a, b) => {
-      if (!a.avg && !b.avg) return 0;
-      if (!a.avg) return 1;
-      if (!b.avg) return -1;
-      return a.avg.localeCompare(b.avg);
-    });
-
-    rowsWithAvg.forEach((row) => {
-      const avgChip = row.avg
-        ? `<span class="time-chip">${row.avg}</span>${isCrownTime(row.avg) ? ' 👑' : ''}`
-        : '<span class="dash">－</span>';
-      const crownCell = row.crownDays > 0
-        ? `<span style="font-weight:700; color:var(--warning);">${row.crownDays}日 👑</span>`
-        : `<span style="color:var(--text-hint);">0日</span>`;
-      summaryHtml += `<tr>
-        <td style="padding:6px 8px; border-bottom:1px solid var(--border); white-space:nowrap;">${row.name}</td>
-        <td style="padding:6px 8px; border-bottom:1px solid var(--border); color:var(--text-muted); white-space:nowrap;">${row.church}</td>
-        <td style="padding:6px 8px; border-bottom:1px solid var(--border);">${avgChip}</td>
-        <td style="padding:6px 8px; border-bottom:1px solid var(--border); color:var(--text-muted); text-align:center;">${row.count}日</td>
-        <td style="padding:6px 8px; border-bottom:1px solid var(--border); text-align:center;">${crownCell}</td>
-      </tr>`;
-    });
-    summaryHtml += `</tbody></table></div>`;
-  }
-
-  let html = '<table class="admin-table"><thead><tr><th>名前</th><th>教会</th>';
-  monthDates.forEach(d => {
-    const day = d.split('-')[2];
-    html += `<th>${parseInt(day)}日</th>`;
-  });
-  html += '</tr></thead><tbody>';
-
-  allAdminData.rows.forEach(row => {
-    const allPersonRecords = dates.map(d => ({ date: d, prayTime: (row.records || {})[d] || '' }));
-    const streakMap = buildStreakMap(allPersonRecords);
-
-    html += `<tr><td style="white-space:nowrap;">${row.name}</td><td style="white-space:nowrap;color:var(--text-muted);">${row.church}</td>`;
-    monthDates.forEach(d => {
-      const t = (row.records || {})[d] || '';
-      if (!t) {
-        html += `<td><span class="dash">-</span></td>`;
-      } else {
-        const s = streakMap[d] || 0;
-        const crown = (() => {
-          if (!isCrownTime(t)) return '';
-          if (s % 7 === 0) return '👑';
-          return '<span style="font-size:12px;">👑</span>';
-        })();
-        html += `<td><span class="time-chip" style="font-size:11px;">${t}</span>${crown}</td>`;
-      }
-    });
-    html += '</tr>';
-  });
-
-  html += '</tbody></table>';
-  content.innerHTML = summaryHtml + html;
-}
-</script>
 </body>
 </html>
