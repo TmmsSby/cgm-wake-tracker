@@ -56,6 +56,15 @@
       return String(h).padStart(2,'0') + ':' + String(mm).padStart(2,'0');
     }
     function getYearMonth(d) { return d ? d.slice(0, 7) : ''; }
+    function formatTime(t) {
+      if (!t) return '';
+      const parts = String(t).split(':');
+      if (parts.length < 2) return t;
+      const h = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10);
+      if (isNaN(h) || isNaN(m)) return t;
+      return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+    }
     function formatDate(d) {
       const p = d.split('-');
       return p.length === 3 ? p[0]+'/'+p[1]+'/'+p[2] : d;
@@ -424,7 +433,7 @@
           return '';
         })();
 
-        html += `<tr><td>${formatDate(r.date)}</td><td><span class="time-chip">${timeVal}</span> ${crown}${streakLabel}</td></tr>`;
+        html += `<tr><td>${formatDate(r.date)}</td><td><span class="time-chip">${formatTime(timeVal)}</span> ${crown}${streakLabel}</td></tr>`;
       });
       html += '</tbody></table>';
       content.innerHTML = html;
@@ -527,7 +536,7 @@
           </tr></thead><tbody>`;
         rowsWithAvg.forEach(row => {
           const avgChip = row.avg
-            ? `<span class="time-chip">${row.avg}</span>${isCrownTime(row.avg) ? ' 👑' : ''}`
+            ? `<span class="time-chip">${formatTime(row.avg)}</span>${isCrownTime(row.avg) ? ' 👑' : ''}`
             : '<span class="dash">－</span>';
           const crownCell = row.crownDays > 0
             ? `<span style="font-weight:700;color:var(--warning);">${row.crownDays}日 👑</span>`
@@ -557,7 +566,7 @@
           else {
             const s = streakMap[d] || 0;
             const crown = isCrownTime(t) ? (s % 7 === 0 && s > 0 ? '👑' : '<span style="font-size:12px;">👑</span>') : '';
-            html += `<td><span class="time-chip" style="font-size:11px;">${t}</span>${crown}</td>`;
+            html += `<td><span class="time-chip" style="font-size:11px;">${formatTime(t)}</span>${crown}</td>`;
           }
         });
         html += '</tr>';
