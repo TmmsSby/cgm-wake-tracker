@@ -26,7 +26,10 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
-    const ADMIN_EMAIL = 'korosuke19750223@gmail.com';
+    const ADMIN_EMAILS = [
+      'korosuke19750223@gmail.com',
+      'taoppa@gmail.com'
+    ];
 
     // 集計期間ボックスを表示しない月
     const NO_COLLECTION_MONTHS = ['09'];
@@ -187,7 +190,7 @@
       document.getElementById('main-name').textContent = currentUser.name;
       document.getElementById('main-church').textContent = currentUser.church;
       document.getElementById('user-avatar').textContent = currentUser.name.charAt(0);
-      const isAdmin = currentUser.email === ADMIN_EMAIL;
+      const isAdmin = ADMIN_EMAILS.includes(currentUser.email);
       document.getElementById('admin-badge').style.display = isAdmin ? '' : 'none';
       document.getElementById('admin-tab-btn').style.display = isAdmin ? '' : 'none';
       const today = new Date().toLocaleDateString('sv-SE');
