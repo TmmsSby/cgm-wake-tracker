@@ -32,6 +32,7 @@
     ];
 
     // 集計期間ボックスを表示しない月
+    // 月間集計（1〜30/31日）で運用する月。ここに無い月は集計期間（1〜7日）運用
     const NO_COLLECTION_MONTHS = ['09'];
 
     let currentUser = null;
@@ -510,12 +511,17 @@
       if (!monthDates.length) { content.innerHTML = '<div class="empty-state">この月の記録がありません</div>'; return; }
 
       const [adminY, adminM] = currentAdminMonth.split('-');
-      const firstWeekDates = monthDates.filter(d => parseInt(d.split('-')[2]) <= 7);
+      // 月間集計の月は月全体、それ以外は1〜7日を集計対象にする
+      const isMonthlyTotal = NO_COLLECTION_MONTHS.includes(adminM);
+      const targetDates = isMonthlyTotal
+        ? monthDates
+        : monthDates.filter(d => parseInt(d.split('-')[2]) <= 7);
+      const periodLabel = isMonthlyTotal ? '月間' : '1〜7日';
 
       let summaryHtml = '';
-      if (firstWeekDates.length > 0) {
+      if (targetDates.length > 0) {
         const rowsWithAvg = Object.entries(allAdminData.members).map(([email, info]) => {
-          const times = firstWeekDates.map(d => (allAdminData.records[email] || {})[d]).filter(t => t);
+          const times = targetDates.map(d => (allAdminData.records[email] || {})[d]).filter(t => t);
           const mins = times.map(t => timeToMinutes(t)).filter(v => v !== null);
           const avg = mins.length ? minutesToTime(mins.reduce((a,b) => a+b,0) / mins.length) : null;
           const crownDays = times.filter(t => isCrownTime(t)).length;
@@ -528,7 +534,7 @@
         });
 
         summaryHtml = `<div style="margin-bottom:1rem;">
-          <div style="font-size:13px;font-weight:700;color:var(--text-muted);margin-bottom:8px;">📊 ${adminY}年${parseInt(adminM)}月 1〜7日 平均お祈り開始時間</div>
+          <div style="font-size:13px;font-weight:700;color:var(--text-muted);margin-bottom:8px;">📊 ${adminY}年${parseInt(adminM)}月 ${periodLabel} 平均お祈り開始時間</div>
           <table style="width:100%;border-collapse:collapse;font-size:13px;">
           <thead><tr>
             <th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);">名前</th>
