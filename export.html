@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>データ書き出しツール | CGM</title>
+  <style>
+    body { font-family: sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; background: #f5f4f0; }
+    .card { background: #fff; border-radius: 10px; padding: 1.5rem; }
+    h1 { font-size: 18px; margin-bottom: 0.5rem; }
+    h2 { font-size: 14px; margin: 1.25rem 0 0.5rem; }
+    p { font-size: 13px; color: #666; line-height: 1.7; margin-bottom: 1rem; }
+    button { padding: 10px 18px; background: #2563eb; color: #fff; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; margin-right: 8px; margin-bottom: 8px; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.sub { background: #4b5563; }
+    textarea { width: 100%; height: 160px; font-size: 12px; font-family: monospace; border: 1px solid #ccc; border-radius: 6px; padding: 8px; box-sizing: border-box; }
+    #log { background: #1a1a1a; color: #e5e7eb; border-radius: 6px; padding: 1rem; max-height: 160px; overflow-y: auto; font-size: 13px; font-family: monospace; margin-top: 1rem; }
+    #work { display: none; }
+    label { font-size: 13px; color: #444; display: block; margin-bottom: 6px; }
+    input[type="month"] { padding: 6px 10px; font-size: 14px; border: 1px solid #ccc; border-radius: 6px; margin-bottom: 1rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>データ書き出しツール</h1>
+    <p>Firestoreのデータを読み取り専用で取り出します。書き込みは一切しません。</p>
+
+    <div id="login">
+      <button id="login-btn" onclick="doLogin()">管理者Googleログイン</button>
+    </div>
+
+    <div id="work">
+      <p id="who" style="color:#16a34a;font-weight:bold;"></p>
+
+      <h2>メンバー一覧</h2>
+      <button onclick="exportMembers()">members を書き出す</button>
+      <button class="sub" onclick="copyBox('out-members')">コピー</button>
+      <button class="sub" onclick="download('out-members','members.csv')">CSV保存</button>
+      <textarea id="out-members" placeholder="ここに結果が出ます"></textarea>
+
+      <h2>記録データ</h2>
+      <label>対象月（空にすると全期間）</label>
+      <input type="month" id="target-month" />
+      <br>
+      <button onclick="exportRecords()">records を書き出す</button>
+      <button class="sub" onclick="copyBox('out-records')">コピー</button>
+      <button class="sub" onclick="download('out-records','records.csv')">CSV保存</button>
+      <textarea id="out-records" placeholder="ここに結果が出ます"></textarea>
+
+      <div id="log"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+    import { getAuth, GoogleAuthProvider, signInWithPopup }
+      from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+    import { getFirestore, collection, getDocs }
+      from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyD0FXYbX7ck2RduoSI6w8oUdabQWsBW16U",
+      authDomain: "cgm-wake-tracker.firebaseapp.com",
+      projectId: "cgm-wake-tracker",
+      storageBucket: "cgm-wake-tracker.firebasestorage.app",
+      messagingSenderId: "337536228102",
+      appId: "1:337536228102:web:af75a83cff745a878d1c87"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const provider = new GoogleAuthProvider();
+
+    function log(msg, type) {
+      const el = document.getElementById('log');
+      const color = type === 'error' ? '#f87171' : type === 'success' ? '#4ade80' : '#e5e7eb';
+      el.innerHTML += `<div style="color:${color}">${msg}</div>`;
+      el.scrollTop = el.scrollHeight;
+    }
+
+    // CSVの値に , " 改行 が含まれる場合を考慮
+    function csvCell(v) {
+      const s = (v === null || v === undefined) ? '' : String(v);
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }
+
+    function fmtTime(t) {
+      if (!t) return '';
+      const p = String(t).split(':');
+      if (p.length < 2) return t;
+      const h = parseInt(p[0], 10), m = parseInt(p[1], 10);
+      if (isNaN(h) || isNaN(m)) return t;
+      return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+    }
+
+    window.doLogin = async function() {
+      document.getElementById('login-btn').disabled = true;
+      try {
+        const res = await signInWithPopup(auth, provider);
+        document.getElementById('login').style.display = 'none';
+        document.getElementById('work').style.display = 'block';
+        document.getElementById('who').textContent = 'ログイン済み: ' + res.user.email;
+      } catch (e) {
+        alert('ログイン失敗: ' + e.message);
+        document.getElementById('login-btn').disabled = false;
+      }
+    };
+
+    window.exportMembers = async function() {
+      try {
+        const snap = await getDocs(collection(db, 'members'));
+        const rows = snap.docs.map(d => d.data())
+          .filter(m => m.email)
+          .sort((a,b) => (a.name || '').localeCompare(b.name || '', 'ja'));
+        const lines = ['email,name,church'];
+        rows.forEach(m => {
+          lines.push([csvCell(m.email), csvCell(m.name), csvCell(m.church)].join(','));
+        });
+        document.getElementById('out-members').value = lines.join('\n');
+        log(`members: ${rows.length}名を書き出しました`, 'success');
+      } catch (e) {
+        log('エラー: ' + (e.code || '') + ' ' + e.message, 'error');
+      }
+    };
+
+    window.exportRecords = async function() {
+      try {
+        const ym = document.getElementById('target-month').value; // YYYY-MM
+        const [memSnap, recSnap] = await Promise.all([
+          getDocs(collection(db, 'members')),
+          getDocs(collection(db, 'records'))
+        ]);
+        const names = {};
+        memSnap.docs.forEach(d => {
+          const m = d.data();
+          if (m.email) names[m.email] = { name: m.name || '', church: m.church || '' };
+        });
+
+        let rows = recSnap.docs.map(d => d.data())
+          .filter(r => r.email && r.date && r.prayTime);
+        if (ym) rows = rows.filter(r => r.date.slice(0,7) === ym);
+        rows.sort((a,b) => a.date.localeCompare(b.date) || a.email.localeCompare(b.email));
+
+        const lines = ['email,name,church,date,prayTime'];
+        rows.forEach(r => {
+          const info = names[r.email] || { name: '', church: '' };
+          lines.push([
+            csvCell(r.email), csvCell(info.name), csvCell(info.church),
+            csvCell(r.date), csvCell(fmtTime(r.prayTime))
+          ].join(','));
+        });
+        document.getElementById('out-records').value = lines.join('\n');
+
+        const uniq = new Set(rows.map(r => r.email)).size;
+        log(`records: ${rows.length}件 / ${uniq}名${ym ? '（' + ym + '）' : '（全期間）'}`, 'success');
+
+        const unknown = [...new Set(rows.filter(r => !names[r.email]).map(r => r.email))];
+        if (unknown.length) {
+          log('membersに未登録: ' + unknown.join(', '), 'error');
+        }
+      } catch (e) {
+        log('エラー: ' + (e.code || '') + ' ' + e.message, 'error');
+      }
+    };
+
+    window.copyBox = function(id) {
+      const el = document.getElementById(id);
+      if (!el.value) { alert('先に書き出してください'); return; }
+      el.select();
+      navigator.clipboard.writeText(el.value).then(
+        () => log('クリップボードにコピーしました', 'success'),
+        () => log('コピーに失敗しました。手動で選択してください', 'error')
+      );
+    };
+
+    window.download = function(id, filename) {
+      const el = document.getElementById(id);
+      if (!el.value) { alert('先に書き出してください'); return; }
+      // Excelでの文字化け防止にBOMを付ける
+      const blob = new Blob(['\uFEFF' + el.value], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      log(filename + ' を保存しました', 'success');
+    };
+  </script>
+</body>
+</html>
