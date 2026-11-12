@@ -33,7 +33,7 @@
 
     // 集計期間ボックスを表示しない月
     // 月間集計（1〜30/31日）で運用する月。ここに無い月は集計期間（1〜7日）運用
-    const NO_COLLECTION_MONTHS = ['09'];
+    const NO_COLLECTION_MONTHS = ['09', '10', '11', '12'];
 
     let currentUser = null;
     let allRecords = [];
@@ -459,7 +459,7 @@
           membersSnap.docs.forEach(d => {
             const data = d.data();
             if (data.email && data.name) {
-              members[data.email] = { name: data.name, church: data.church || '' };
+              members[data.email] = { name: data.name, church: data.church || '', gender: data.gender || '' };
             }
           });
           const records = {};
@@ -500,6 +500,71 @@
       });
       renderAdmin();
     }
+
+    // ============================================================
+    // CSV出力（管理者）
+    // ============================================================
+    function csvCell(v) {
+      const s = (v === null || v === undefined) ? '' : String(v);
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }
+
+    function downloadCsv(lines, filename) {
+      // ExcelでUTF-8を正しく開かせるためBOMを付ける
+      const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+    }
+
+    function csvMsg(text) {
+      const el = document.getElementById('csv-msg');
+      el.textContent = text;
+      setTimeout(() => { el.textContent = ''; }, 4000);
+    }
+
+    window.exportRecordsCsv = function() {
+      if (!allAdminData) { csvMsg('データ読込中です'); return; }
+      const ym = currentAdminMonth;
+      const dates = allAdminData.dates.filter(d => getYearMonth(d) === ym).sort();
+      if (!dates.length) { csvMsg('この月の記録がありません'); return; }
+
+      const lines = ['email,name,church,gender,date,prayTime'];
+      let count = 0;
+      Object.entries(allAdminData.members).forEach(([email, info]) => {
+        const rec = allAdminData.records[email] || {};
+        dates.forEach(d => {
+          const t = rec[d];
+          if (!t) return;
+          lines.push([
+            csvCell(email), csvCell(info.name), csvCell(info.church),
+            csvCell(info.gender || ''), csvCell(d), csvCell(formatTime(t))
+          ].join(','));
+          count++;
+        });
+      });
+      downloadCsv(lines, `records_${ym}.csv`);
+      csvMsg(`${count}件を書き出しました`);
+    };
+
+    window.exportMembersCsv = function() {
+      if (!allAdminData) { csvMsg('データ読込中です'); return; }
+      const rows = Object.entries(allAdminData.members)
+        .sort((a, b) => (a[1].name || '').localeCompare(b[1].name || '', 'ja'));
+      const lines = ['email,name,church,gender'];
+      rows.forEach(([email, info]) => {
+        lines.push([
+          csvCell(email), csvCell(info.name),
+          csvCell(info.church), csvCell(info.gender || '')
+        ].join(','));
+      });
+      downloadCsv(lines, 'members.csv');
+      csvMsg(`${rows.length}名を書き出しました`);
+    };
 
     function renderAdmin() {
       document.querySelectorAll('#admin-month-btns .btn-month').forEach(btn => {
@@ -652,7 +717,11 @@
     .admin-table th, .admin-table td { text-align: center; padding: 6px 8px; }
     .admin-table th:first-child, .admin-table td:first-child,
     .admin-table th:nth-child(2), .admin-table td:nth-child(2) { text-align: left; }
-    .month-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 1rem; }
+    .month-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 0.6rem; }
+    .csv-btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 1rem; }
+    .btn-csv { background: transparent; color: var(--text-muted); border: 1px solid var(--border-strong); font-size: 12px; padding: 6px 12px; border-radius: var(--radius-sm); }
+    .btn-csv:hover:not(:disabled) { background: var(--bg); }
+    #csv-msg { font-size: 12px; color: var(--success); }
     .avg-box { background: var(--accent-light); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 1rem; font-size: 13px; }
     .avg-title { color: var(--text-muted); margin-bottom: 6px; font-weight: 500; }
     .avg-row { display: flex; gap: 1.5rem; flex-wrap: wrap; }
@@ -751,6 +820,11 @@
       <div class="card">
         <h2>全員のお祈り記録</h2>
         <div class="month-btns" id="admin-month-btns"></div>
+        <div class="csv-btns">
+          <button class="btn-csv" id="csv-records" onclick="exportRecordsCsv()">この月の記録をCSV</button>
+          <button class="btn-csv" id="csv-members" onclick="exportMembersCsv()">メンバー一覧をCSV</button>
+          <span id="csv-msg"></span>
+        </div>
         <div class="loading-row" id="admin-loading" style="display:none;"><span class="spinner"></span>読み込み中...</div>
         <div class="overflow-wrap"><div id="admin-content"></div></div>
       </div>
